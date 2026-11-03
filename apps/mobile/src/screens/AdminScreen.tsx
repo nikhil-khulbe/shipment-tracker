@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
+  Keyboard,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -229,6 +230,7 @@ function UpdateStatusForm() {
   function handleLoad() {
     const trimmed = trackingId.trim();
     if (!trimmed) return;
+    Keyboard.dismiss();
     loadShipment({ variables: { trackingId: trimmed } });
   }
 
