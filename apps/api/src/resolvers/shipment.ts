@@ -1,0 +1,72 @@
+import type { GraphQLContext } from "../context.js";
+import * as shipmentService from "../services/shipmentService.js";
+import { requireAdmin, badUserInput } from "../errors.js";
+import { isShipmentStatus } from "../domain/status.js";
+import { Admin } from "../models/Admin.js";
+
+/**
+ * Mongoose gives back `_id` (an ObjectId) and Date objects; GraphQL's
+ * schema promises `id: ID!` (a string) and ISO-8601 date strings. This
+ * is the one place that translation happens, for both the lean query
+ * result (plain object) and the hydrated document (updateStatus).
+ */
+function serializeShipment(doc: any) {
+  return {
+    id: doc._id.toString(),
+    trackingId: doc.trackingId,
+    origin: doc.origin,
+    destination: doc.destination,
+    receiverName: doc.receiverName,
+    currentStatus: doc.currentStatus,
+    history: doc.history.map((event: any) => ({
+      status: event.status,
+      location: event.location,
+      note: event.note ?? null,
+      timestamp: new Date(event.timestamp).toISOString(),
+    })),
+    createdAt: new Date(doc.createdAt).toISOString(),
+    updatedAt: new Date(doc.updatedAt).toISOString(),
+  };
+}
+
+export const shipmentQueries = {
+  shipment: async (_parent: unknown, args: { trackingId: string }) => {
+    const doc = await shipmentService.findByTrackingId(args.trackingId);
+    return doc ? serializeShipment(doc) : null;
+  },
+
+  me: async (_parent: unknown, _args: unknown, context: GraphQLContext) => {
+    const admin = await requireAdmin(context, Admin);
+    return { id: admin.id, email: admin.email };
+  },
+};
+
+export const shipmentMutations = {
+  createShipment: async (
+    _parent: unknown,
+    args: { input: shipmentService.CreateShipmentInput },
+    context: GraphQLContext,
+  ) => {
+    await requireAdmin(context, Admin);
+    const doc = await shipmentService.createShipment(args.input);
+    return serializeShipment(doc);
+  },
+
+  updateStatus: async (
+    _parent: unknown,
+    args: { input: { trackingId: string; status: string; location: string; note?: string | null } },
+    context: GraphQLContext,
+  ) => {
+    await requireAdmin(context, Admin);
+    if (!isShipmentStatus(args.input.status)) {
+      throw badUserInput(`"${args.input.status}" is not a valid shipment status.`);
+    }
+    const doc = await shipmentService.updateStatus({
+      trackingId: args.input.trackingId,
+      status: args.input.status,
+      location: args.input.location,
+      note: args.input.note,
+    });
+    return serializeShipment(doc);
+  },
+};
