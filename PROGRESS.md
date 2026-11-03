@@ -30,9 +30,10 @@ Mongoose 9.x (the current "latest") bundles a driver incompatible with the `mong
 
 ## Not started yet
 
-1. **README.md** — setup instructions, env var tables, design-decisions section, test output, screenshots, live links. This is the main thing left.
+1. ~~README.md~~ — written (setup, env tables, tests, design decisions, limitations). Still has TODO placeholders for live URL, APK link, and GIF/screenshots.
 2. **Screenshots + demo GIF** for the README — none saved into `docs/screenshots/` yet.
-3. **Deployment** — Atlas cluster, Render web service, Netlify web build, EAS APK build. All need your accounts/credentials, so this has to be driven by you or done together live; I documented the exact steps + env vars in `PLAN.md` §7 already.
+3. `apps/mobile/eas.json` added (APK preview profile); its `EXPO_PUBLIC_API_URL` is a placeholder to replace with the Render URL.
+4. **Deployment** — Atlas cluster, Render web service, Netlify web build, EAS APK build. All need your accounts/credentials, so this has to be driven by you or done together live; I documented the exact steps + env vars in `PLAN.md` §7 already.
 4. The optional 6th test (pure unit test over the full 5×5 `canTransition` matrix) — already written, actually, it's test #6 in the suite. So this one's done too, just noting it in case the count looks off against the plan's "4-5 tests."
 
 ## To pick this back up
