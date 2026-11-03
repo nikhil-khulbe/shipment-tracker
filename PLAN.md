@@ -510,6 +510,8 @@ Deliberately not used: Redux/Zustand (Apollo cache + two `useState`s is the whol
 
 # Phase 2 — Polish and advanced features
 
+> **Status: Batches A–D are built and committed.** Deviations from the plan as written: B1 uses Apollo `pollInterval` plus `NetworkStatus` to drive the "Updated" label; the admin list is a third "Shipments" section inside the Admin tab (a FlatList can't nest in the old ScrollView); the status-list index also carries `_id` for a stable cursor; D uses a custom cache save/restore instead of `apollo3-cache-persist` (Apollo 3 only, no way to exclude admin data) and adds `rxjs` as an explicit dependency for the link. The offline banner could not be verified on web.
+>
 > **Supersedes** the "scope is frozen" line in Context. Phase 1 (everything above) is built and committed; this phase is a deliberate, ordered extension. Rule from §10 still applies: finish and commit each batch before starting the next, and README + deploy still ship even if a later batch is dropped.
 
 ## Batch A — Stylish (mobile only, no API change)

@@ -17,16 +17,27 @@ _Demo GIF: TODO._
 |---|---|
 | API | Node, Express 5, Apollo Server 5, GraphQL, Mongoose 8, MongoDB |
 | Auth | JWT (HS256, 8h) + bcrypt |
-| App | Expo (React Native), TypeScript, Apollo Client, React Navigation (bottom tabs) |
+| App | Expo (React Native), TypeScript, Apollo Client 4, React Navigation (bottom tabs), Reanimated |
 | Tests | Jest, ts-jest, mongodb-memory-server |
 | Deploy | MongoDB Atlas, Render (API), Netlify (web), EAS (APK) |
 
 ## Features
 
 - **Public:** `shipment(trackingId)` query → current status + full timeline.
-- **Admin (JWT):** `login`, `createShipment`, `updateStatus`, `me`.
+- **Admin (JWT):** `login`, `createShipment`, `updateStatus`, `me`, and `shipments(status, search, cursor, limit)` — a cursor-paginated list.
 - **Status state machine:** `CREATED → PICKED_UP → IN_TRANSIT → OUT_FOR_DELIVERY → DELIVERED`, one step forward at a time, `DELIVERED` is terminal. Illegal moves are rejected with `INVALID_STATUS_TRANSITION`.
 - Status history is append-only.
+
+**App**
+- Animated timeline (staggered slide-in), progress bar, skeleton loaders, icon status badges, Inter font.
+- Light / dark mode that follows the device (one theme object, no colours in components).
+- Haptics and toasts on track / create / update.
+- **Deep links:** `/track/SHP-XXXXXXXX` on web, `shipmenttracker://track/SHP-XXXXXXXX` on native; a "Share link" button.
+- Auto-refresh every 30 s ("Updated just now"), paused while the app is backgrounded; pull-to-refresh.
+- **Optimistic status updates** that roll back automatically if the server rejects them.
+- Session expiry is handled globally: any `UNAUTHENTICATED` response clears the token and returns the admin to login.
+- Admin list: search by tracking-ID prefix, status filter chips, infinite scroll; tap a row to update it.
+- **Offline:** last result is cached on-device and shown without a connection, recent searches appear as chips, and an offline banner slides in.
 
 ## Repo layout
 
@@ -81,6 +92,7 @@ On a physical phone, `localhost` is the phone itself — set `EXPO_PUBLIC_API_UR
 | Var | Purpose |
 |---|---|
 | `EXPO_PUBLIC_API_URL` | GraphQL endpoint. Inlined into the bundle at build time — public, never put secrets here |
+| `EXPO_PUBLIC_WEB_URL` | optional — the deployed web URL, used to build the "Share link" URL |
 
 ## Tests
 
@@ -88,14 +100,16 @@ On a physical phone, `localhost` is the phone itself — set `EXPO_PUBLIC_API_UR
 npm test -w api
 ```
 
-Six tests run through `ApolloServer.executeOperation` against an in-memory MongoDB, so schema, context and error formatting are all exercised:
+Eight tests run through `ApolloServer.executeOperation` against an in-memory MongoDB, so schema, context and error formatting are all exercised:
 
 1. Public `shipment` query returns full history, and `null` for an unknown ID.
 2. `createShipment` requires auth (and writes nothing without it); creates a correct initial state.
 3. `updateStatus` advances legally and appends to history.
 4. `updateStatus` rejects an illegal transition **and leaves the document unchanged**.
 5. `login` succeeds, and fails with an identical error for wrong password vs. unknown email.
-6. `canTransition` over the full 5×5 matrix (pure unit test).
+6. The admin list requires auth.
+7. The admin list pages through every shipment exactly once (including rows that share a `createdAt`), newest first, and honours the status filter, tracking-ID search and rejects a bad cursor.
+8. `canTransition` over the full 5×5 matrix (pure unit test).
 
 The first run downloads a MongoDB binary, so it can be slow on a cold machine.
 
@@ -112,6 +126,11 @@ The first run downloads a MongoDB binary, so it can be slow on a cold machine.
 - **Timestamps are ISO `String`s, not a `DateTime` scalar** — no date is ever an input here, so a scalar buys nothing.
 - **Production hardening:** introspection off, internal errors masked (real error logged server-side), 100kb body limit, `/healthz`.
 - **Token storage:** `expo-secure-store` (Keychain/Keystore) on native. SecureStore has no web implementation, so the web build falls back to `localStorage`, which is XSS-exposed.
+- **Cursor pagination, not skip/limit.** The cursor is an opaque `(createdAt, _id)` pair; `skip` is O(n) and shifts rows when new shipments arrive mid-scroll. The query fetches `limit + 1` rows to learn whether another page exists, and the `_id` tie-break keeps the order stable when two rows share a timestamp (covered by a test). Search is an *anchored* prefix match so it can use the `trackingId` index.
+- **Polling, not subscriptions, for live status.** Status changes are minutes apart and polling needs no WebSocket infrastructure on a free API tier.
+- **Optimistic UI.** `updateStatus` writes a predicted result into Apollo's optimistic cache layer; if the server rejects it, that layer is discarded and the UI snaps back with no hand-written undo.
+- **Cache persistence excludes admin data.** The on-device cache is a custom ~60-line save/restore (the off-the-shelf `apollo3-cache-persist` targets Apollo 3 and can't filter). Before saving, the admin list and profile are evicted and the cache garbage-collected, so only what the public Track screen showed is written to disk. It's also wiped on logout.
+- **One theme object.** Light and dark palettes share the same keys; components call `useTheme()` and never contain a hex literal.
 - **Mongoose pinned to 8.x.** Mongoose 9's bundled driver failed its handshake against the `mongodb-memory-server` binary; 8.x works.
 - **Deliberately not used:** Redux/Zustand (Apollo cache + local state is enough), a UI kit, form libraries, `type-graphql`, DataLoader (`history` is embedded, so no N+1).
 
@@ -120,7 +139,9 @@ The first run downloads a MongoDB binary, so it can be slow on a cold machine.
 - Single seeded admin; no signup, password reset or roles.
 - Atlas free tier with a `0.0.0.0/0` allowlist (Render's free tier has no static IP) — the real fix is private networking on a paid tier.
 - JWT in `localStorage` on web; an httpOnly cookie would be better there but doesn't suit a shared native client.
-- Next: GraphQL subscriptions for live status, admin list with pagination, rate limiting on `login`, graphql-codegen for shared types, CI running the tests, structured logging.
+- Polling interval is fixed; the API would need subscriptions for true push.
+- The offline banner and haptics are only verified on web/emulated paths so far; check on a physical device.
+- Next: GraphQL subscriptions for live status, rate limiting on `login`, graphql-codegen for shared types, CI running the tests, structured logging.
 
 ## Deployment (summary)
 

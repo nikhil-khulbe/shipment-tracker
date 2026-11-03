@@ -1,5 +1,15 @@
 # Progress — Shipment Tracker
 
+## Phase 2 (PLAN.md "Phase 2") — built
+
+- **A (stylish):** theme/dark mode, Inter, icon badges, skeletons, animated timeline + progress bar, haptics + toasts.
+- **B (behaviour):** 30 s polling + "Updated" label, optimistic `updateStatus`, global session-expiry handling, deep links + share.
+- **C (admin list):** API `shipments` query (cursor pagination, status filter, prefix search, 2 new indexes, tests → **8/8 passing**) and the mobile list.
+- **D (offline):** persisted public-only cache, recent searches, offline banner.
+- Verified on web in Chrome (track, deep link, list, filter, row tap, session expiry, API-down cached render). **Not verified:** the offline banner, haptics, and anything on a physical Android device. **Still to do:** README GIF, deployment (Atlas/Render/Netlify/EAS).
+- Local dev DB now holds ~30 seeded demo shipments.
+
+
 Status as of this session. Full design spec, schema, and rationale live in `PLAN.md` — read that first if picking this back up cold. This file is just "what's actually built" vs. "what's left."
 
 ## Done
