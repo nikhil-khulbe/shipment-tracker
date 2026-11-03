@@ -505,3 +505,72 @@ Deliberately not used: Redux/Zustand (Apollo cache + two `useState`s is the whol
 4. Live: open the Netlify URL in a private window, track the demo ID, see the timeline. Then log in with the demo admin and advance a shipment, to prove auth works against the deployed API.
 5. Install the APK from the GitHub Release on a physical Android device and repeat step 3 against production.
 6. Read your own README top to bottom as if you'd never seen the project, with every link clicked.
+
+---
+
+# Phase 2 — Polish and advanced features
+
+> **Supersedes** the "scope is frozen" line in Context. Phase 1 (everything above) is built and committed; this phase is a deliberate, ordered extension. Rule from §10 still applies: finish and commit each batch before starting the next, and README + deploy still ship even if a later batch is dropped.
+
+## Batch A — Stylish (mobile only, no API change)
+
+| # | Item | Approach |
+|---|---|---|
+| A1 | **Theme + dark mode** | One `theme.ts` with `light` and `dark` palettes (same keys); `useTheme()` reads `useColorScheme()`. All screens/components take colours from it — no hex literals in components. `app.json` `userInterfaceStyle` → `automatic`. |
+| A2 | **Inter font** | `@expo-google-fonts/inter` + `expo-font`; gate first render on `useFonts`, keep splash until loaded. Weights 400/500/600/700 only. |
+| A3 | **Icon status badges** | Per-status Ionicons (create=`cube`, picked up=`bag-check`, transit=`car`/truck, out for delivery=`bicycle`, delivered=`checkmark-circle`) shown in `StatusBadge` and on the timeline rail. |
+| A4 | **Skeleton loaders** | `Skeleton` primitive (reanimated pulsing opacity) → `ShipmentSkeleton` shaped like header card + 3 timeline rows; replaces `ActivityIndicator` on Track. |
+| A5 | **Animated timeline** | `react-native-reanimated` `FadeInDown.delay(index * 80).springify()` per event; progress bar (5 segments) under the header card animates width to `statusIndex / 4`. |
+| A6 | **Haptics + toasts** | `expo-haptics` (light on successful track, success notification on update) and `react-native-toast-message` ("Status updated to In Transit", errors). Toast themed from A1. |
+
+Install with `npx expo install` only. Reanimated needs its Babel/worklets support — verify the app still bundles on web *and* Android after A4.
+
+**Done check:** toggle device dark mode → whole app flips without a reload; track a shipment → skeleton, then events slide in one by one and the bar fills; advance status → haptic + toast.
+
+## Batch B — Behaviour (mobile, small API-free changes)
+
+| # | Item | Approach |
+|---|---|---|
+| B1 | **Polling + "Updated just now"** | `useQuery` with `pollInterval: 30000`, paused when app is backgrounded (`AppState`) or no tracking ID. "Updated Xs ago" label ticks from `dataUpdatedAt`-style timestamp. Pull-to-refresh retained. Interview answer: polling over subscriptions because it needs no WebSocket infra on a free Render tier and status changes are minutes apart. |
+| B2 | **Optimistic `updateStatus`** | `optimisticResponse` appends the predicted event + sets `currentStatus`; Apollo rolls it back automatically if the server rejects. Toast on rollback. |
+| B3 | **Global auth error handling** | Extend existing `errorLink`: on `UNAUTHENTICATED` clear token **and** notify the Admin screen (tiny event emitter) so it drops to login immediately, with a "Session expired" toast — not only on next mount. |
+| B4 | **Deep links + share** | React Navigation `linking` config: `shipmenttracker://track/SHP-XXXX` and (web) `/track/SHP-XXXX`. Track screen reads the `trackingId` route param and auto-runs the query. "Share tracking link" button via `Share.share`. Web build needs the Netlify `_redirects` SPA rule (§5 Day 5 already mentions it). README gets a working example link once deployed. |
+
+**Done check:** open `/track/<id>` on web → result loads with no typing; advance a status → timeline updates before the network returns; expire/tamper token → bounced to login with a toast.
+
+## Batch C — Admin shipment list (API + mobile)
+
+New query: `shipments(status: ShipmentStatus, search: String, cursor: String, limit: Int = 20): ShipmentPage!` — **admin only**.
+
+```graphql
+type ShipmentPage { items: [Shipment!]!  nextCursor: String }
+```
+
+- **Cursor = opaque base64 of `{createdAt, _id}`**, sorted `createdAt desc, _id desc`; query `{ $or: [{createdAt < c}, {createdAt = c, _id < id}] }`. Not skip/limit — skip is O(n) and drifts when rows are inserted mid-scroll. Fetch `limit + 1` to know whether another page exists.
+- **Index:** `{ currentStatus: 1, createdAt: -1 }` (status-filtered list) alongside the existing `{ createdAt: -1 }`. `search` = case-insensitive prefix match on `trackingId` (anchored, so it can use an index) — *not* an unanchored regex.
+- Limit clamped to 1–50 server-side; invalid cursor → `BAD_USER_INPUT`.
+- **Tests (resolvers.test.ts):** (7) list requires auth; (8) pagination returns every shipment exactly once across pages with no duplicates and a null `nextCursor` at the end, and the status filter excludes others. Suite becomes 8 tests.
+- **Mobile:** Admin tab gets a list section: search box, status filter chips, `FlatList` with `onEndReached` → Apollo `fetchMore` (type-policy `keyArgs: ["status","search"]` merging `items`), tapping a row pre-fills the update form. FlatList is justified here (unbounded list) — contrast with the Timeline's `.map()`.
+
+**Done check:** seed ~30 shipments; scroll loads pages; filter chips and search change the result set; tapping a row opens it for update; `npm test -w api` → 8 passing.
+
+## Batch D — Offline resilience
+
+- `apollo3-cache-persist` + `@react-native-async-storage/async-storage` (via `expo install`) persisting the Apollo cache; Track uses `cache-and-network` so the last result shows instantly and refreshes when online.
+- **Recent searches:** last 5 tracking IDs in AsyncStorage → tappable chips under the search box.
+- **Offline banner:** `@react-native-community/netinfo`, slide-in banner "You're offline — showing saved data".
+- Caveat to state in README: **don't persist the admin token or admin list through the Apollo cache path** — token stays in SecureStore only; clear the persisted cache on logout.
+
+**Done check:** track a shipment, enable airplane mode, relaunch → last result still renders with the offline banner.
+
+## Order and cut line
+
+A → B → C → D. If time runs short, drop **D**, then **B4's share button**, then **A2 (Inter)** — in that order. Never drop the README refresh: after each batch, update screenshots/GIF, the feature list, and the design-decisions section (add: theme tokens, polling vs subscriptions, cursor vs offset pagination, optimistic UI rollback, why cache persistence excludes auth data).
+
+## New interview questions this phase triggers
+
+- *Why polling instead of subscriptions?* No WebSocket infra needed; updates are minutes apart; trivial to explain and cheap. Subscriptions are the "what next".
+- *Cursor vs offset pagination?* Offset is O(skip) and skips/duplicates rows when data changes mid-scroll; a `(createdAt, _id)` cursor is stable and index-backed.
+- *How does an optimistic update roll back?* Apollo applies it to a separate optimistic layer of the cache; if the mutation errors, that layer is discarded — no manual undo code.
+- *What should and shouldn't you persist offline?* Public shipment data yes; tokens and admin data no, and wipe on logout.
+- *How do deep links work on native vs web?* Native: URL scheme registered in `app.json` + React Navigation `linking`; web: real URL paths with an SPA fallback rewrite.
