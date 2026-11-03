@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -72,15 +71,19 @@ export function AdminScreen() {
   }
 
   return (
-    <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+    <KeyboardAvoidingView style={styles.flex} behavior="padding">
+      <ScrollView
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+        automaticallyAdjustKeyboardInsets
+      >
         <View style={styles.header}>
           <Text style={styles.title}>Admin</Text>
           <Pressable onPress={handleLogout}>
             <Text style={styles.logout}>Log out</Text>
           </Pressable>
         </View>
-        <Text style={styles.signedInAs}>Signed in as {meData?.me?.email}</Text>
+        <Text style={styles.signedInAs}>{meData?.me?.email}</Text>
 
         <CreateShipmentForm />
         <View style={styles.divider} />
@@ -107,7 +110,7 @@ function LoginForm({ onLoggedIn }: { onLoggedIn: () => void }) {
   }
 
   return (
-    <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+    <KeyboardAvoidingView style={styles.flex} behavior="padding">
       <View style={styles.loginContainer}>
         <Text style={styles.title}>Admin login</Text>
         <Text style={styles.subtitle}>Sign in to create shipments and update their status.</Text>
@@ -332,7 +335,7 @@ function UpdateStatusForm() {
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   centered: { flex: 1, alignItems: "center", justifyContent: "center" },
-  content: { padding: 20, paddingBottom: 48 },
+  content: { padding: 20, paddingBottom: 120 },
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   title: { fontSize: 24, fontWeight: "700", color: "#111827" },
   subtitle: { fontSize: 14, color: "#6b7280", marginTop: 4, marginBottom: 20 },
