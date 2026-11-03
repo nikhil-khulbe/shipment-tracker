@@ -15,6 +15,7 @@ import { CREATE_SHIPMENT_MUTATION, LOGIN_MUTATION, UPDATE_STATUS_MUTATION } from
 import { getToken, saveToken, clearToken } from "../auth/token";
 import { onSessionExpired } from "../auth/session";
 import { apolloClient } from "../apollo";
+import { clearPersistedCache } from "../cachePersist";
 import { ShipmentList } from "../components/ShipmentList";
 import { Text, TextInput } from "../components/ui";
 import { feedback } from "../feedback";
@@ -81,6 +82,7 @@ export function AdminScreen() {
   async function handleLogout() {
     await clearToken();
     await apolloClient.resetStore();
+    await clearPersistedCache();
     setHasStoredToken(false);
   }
 

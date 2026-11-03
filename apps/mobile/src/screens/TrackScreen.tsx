@@ -20,6 +20,7 @@ import { ShipmentSkeleton } from "../components/Skeleton";
 import { Timeline } from "../components/Timeline";
 import { Text, TextInput } from "../components/ui";
 import { feedback } from "../feedback";
+import { useRecentSearches } from "../recentSearches";
 import { buildShareUrl } from "../links";
 import type { RootTabParamList } from "../navigation";
 import { useTheme, type Theme } from "../theme/theme";
@@ -54,13 +55,17 @@ export function TrackScreen() {
   // True between a user-initiated search and its result, so the "tracked"
   // haptic fires for searches and deep links but not for background polls.
   const userInitiated = useRef(false);
+  const { recent, add: addRecent } = useRecentSearches();
 
   const { data, error, networkStatus, refetch, startPolling, stopPolling } = useQuery<{
     shipment: Shipment | null;
   }>(SHIPMENT_QUERY, {
     variables: { trackingId: searchedId ?? "" },
     skip: searchedId === null,
-    fetchPolicy: "network-only",
+    // Show whatever we have cached (including last session's, restored from
+    // disk) immediately, then refresh from the network. Offline, the network
+    // half fails but the cached shipment stays on screen.
+    fetchPolicy: "cache-and-network",
     // Polling, not subscriptions: updates are minutes apart and polling needs
     // no WebSocket infrastructure on a free API tier.
     pollInterval: POLL_INTERVAL_MS,
@@ -76,8 +81,12 @@ export function TrackScreen() {
     setUpdatedAt(Date.now());
     if (userInitiated.current) {
       userInitiated.current = false;
-      if (data?.shipment) feedback.tracked();
+      if (data?.shipment) {
+        feedback.tracked();
+        addRecent(data.shipment.trackingId);
+      }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [networkStatus, data, searchedId]);
 
   // Don't poll while the app is in the background.
@@ -167,6 +176,17 @@ export function TrackScreen() {
           </Pressable>
         </View>
 
+        {recent.length > 0 && (
+          <View style={styles.recentRow}>
+            {recent.map((id) => (
+              <Pressable key={id} style={styles.recentChip} onPress={() => search(id)}>
+                <Ionicons name="time-outline" size={13} color={t.textMuted} />
+                <Text style={styles.recentText}>{id}</Text>
+              </Pressable>
+            ))}
+          </View>
+        )}
+
         {isInitialLoad && !shipment && <ShipmentSkeleton />}
 
         {!isInitialLoad && error && !shipment && (
@@ -201,7 +221,18 @@ const makeStyles = (t: Theme) =>
     content: { padding: 20, paddingBottom: 120 },
     title: { fontSize: 24, fontWeight: "700" },
     subtitle: { fontSize: 14, color: t.textMuted, marginTop: 4, marginBottom: 20 },
-    searchRow: { flexDirection: "row", gap: 10, marginBottom: 24 },
+    searchRow: { flexDirection: "row", gap: 10, marginBottom: 14 },
+    recentRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 20 },
+    recentChip: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 5,
+      paddingVertical: 5,
+      paddingHorizontal: 10,
+      borderRadius: 999,
+      backgroundColor: t.surfaceAlt,
+    },
+    recentText: { fontSize: 12, fontWeight: "500", color: t.textMuted },
     input: {
       flex: 1,
       borderWidth: 1,

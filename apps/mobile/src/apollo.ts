@@ -1,9 +1,11 @@
-import { ApolloClient, InMemoryCache, createHttpLink, from } from "@apollo/client";
+import { ApolloClient, ApolloLink, InMemoryCache, createHttpLink, from, type TypePolicies } from "@apollo/client";
 import { setContext } from "@apollo/client/link/context";
 import { ErrorLink } from "@apollo/client/link/error";
 import { CombinedGraphQLErrors } from "@apollo/client/errors";
 import { getToken, clearToken } from "./auth/token";
 import { emitSessionExpired } from "./auth/session";
+import { tap } from "rxjs";
+import { registerCache, schedulePersist } from "./cachePersist";
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:4000/graphql";
 
@@ -41,10 +43,12 @@ const errorLink = new ErrorLink(({ error, operation }) => {
   }
 });
 
-export const apolloClient = new ApolloClient({
-  link: from([errorLink, authLink, httpLink]),
-  cache: new InMemoryCache({
-    typePolicies: {
+// After every response, queue a (debounced) save of the cache to disk.
+const persistLink = new ApolloLink((operation, forward) =>
+  forward(operation).pipe(tap(() => schedulePersist())),
+);
+
+export const typePolicies: TypePolicies =  {
       Query: {
         fields: {
           // Admin list. `status` and `search` identify a distinct list;
@@ -64,6 +68,12 @@ export const apolloClient = new ApolloClient({
           },
         },
       },
-    },
-  }),
+    };
+
+export const cache = new InMemoryCache({ typePolicies });
+registerCache(cache, typePolicies);
+
+export const apolloClient = new ApolloClient({
+  link: from([errorLink, persistLink, authLink, httpLink]),
+  cache,
 });

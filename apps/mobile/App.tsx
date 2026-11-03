@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { StatusBar } from "expo-status-bar";
 import { View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -17,6 +18,8 @@ import { apolloClient } from "./src/apollo";
 import { TrackScreen } from "./src/screens/TrackScreen";
 import { AdminScreen } from "./src/screens/AdminScreen";
 import { AppToast } from "./src/components/AppToast";
+import { OfflineBanner } from "./src/components/OfflineBanner";
+import { restoreCache } from "./src/cachePersist";
 import { linking } from "./src/links";
 import { font } from "./src/theme/fonts";
 import { useTheme } from "./src/theme/theme";
@@ -61,6 +64,7 @@ function Root() {
           }}
         />
       </Tab.Navigator>
+      <OfflineBanner />
       <AppToast />
       <StatusBar style={t.dark ? "light" : "dark"} />
     </NavigationContainer>
@@ -70,9 +74,17 @@ function Root() {
 export default function App() {
   const t = useTheme();
   const [fontsLoaded] = useFonts({ Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold });
+  const [cacheRestored, setCacheRestored] = useState(false);
 
-  // Hold the first render until Inter is ready so text doesn't flash in the system font.
-  if (!fontsLoaded) return <View style={{ flex: 1, backgroundColor: t.bg }} />;
+  // Load the saved cache before any screen queries, so a cache-first read
+  // can find last session's data.
+  useEffect(() => {
+    restoreCache().finally(() => setCacheRestored(true));
+  }, []);
+
+  // Hold the first render until Inter and the cache are ready, so text doesn't
+  // flash in the system font and the Track screen doesn't flash empty.
+  if (!fontsLoaded || !cacheRestored) return <View style={{ flex: 1, backgroundColor: t.bg }} />;
 
   return (
     <ApolloProvider client={apolloClient}>
