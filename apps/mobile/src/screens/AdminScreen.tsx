@@ -9,6 +9,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import * as Clipboard from "expo-clipboard";
 import { useLazyQuery, useMutation, useQuery } from "@apollo/client/react";
 import { ME_QUERY, SHIPMENT_QUERY } from "../graphql/queries";
 import { CREATE_SHIPMENT_MUTATION, LOGIN_MUTATION, UPDATE_STATUS_MUTATION } from "../graphql/mutations";
@@ -153,6 +154,13 @@ function CreateShipmentForm() {
     { refetchQueries: ["Shipment"] },
   );
   const [createdTrackingId, setCreatedTrackingId] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  async function handleCopy() {
+    if (!createdTrackingId) return;
+    await Clipboard.setStringAsync(createdTrackingId);
+    setCopied(true);
+  }
 
   async function handleSubmit() {
     const result = await createShipment({
@@ -162,6 +170,7 @@ function CreateShipmentForm() {
     const created: Shipment | undefined = result?.data?.createShipment;
     if (created) {
       setCreatedTrackingId(created.trackingId);
+      setCopied(false);
       setOrigin("");
       setDestination("");
       setReceiverName("");
@@ -188,12 +197,12 @@ function CreateShipmentForm() {
       </Pressable>
 
       {createdTrackingId && (
-        <View style={styles.successBanner}>
-          <Text style={styles.successLabel}>Created. Tracking ID (tap and hold to copy):</Text>
-          <Text selectable style={styles.successValue}>
-            {createdTrackingId}
+        <Pressable style={styles.successBanner} onPress={handleCopy}>
+          <Text style={styles.successLabel}>
+            {copied ? "Copied to clipboard" : "Created. Tap the ID to copy it:"}
           </Text>
-        </View>
+          <Text style={styles.successValue}>{createdTrackingId}</Text>
+        </Pressable>
       )}
     </View>
   );
