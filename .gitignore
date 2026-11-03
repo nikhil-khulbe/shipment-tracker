@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.env
+.env.local
+*.log
+.expo/
+apps/mobile/dist/
+coverage/
+.DS_Store
+*.apk
