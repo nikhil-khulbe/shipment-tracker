@@ -17,6 +17,7 @@ import { apolloClient } from "./src/apollo";
 import { TrackScreen } from "./src/screens/TrackScreen";
 import { AdminScreen } from "./src/screens/AdminScreen";
 import { AppToast } from "./src/components/AppToast";
+import { linking } from "./src/links";
 import { font } from "./src/theme/fonts";
 import { useTheme } from "./src/theme/theme";
 
@@ -38,7 +39,7 @@ function Root() {
   };
 
   return (
-    <NavigationContainer theme={navTheme}>
+    <NavigationContainer theme={navTheme} linking={linking}>
       <Tab.Navigator
         screenOptions={{
           headerShown: false,

@@ -9,6 +9,7 @@ export const SHIPMENT_STATUSES = [
 export type ShipmentStatus = (typeof SHIPMENT_STATUSES)[number];
 
 export type StatusEvent = {
+  __typename?: "StatusEvent";
   status: ShipmentStatus;
   location: string;
   note?: string | null;
@@ -16,6 +17,7 @@ export type StatusEvent = {
 };
 
 export type Shipment = {
+  __typename?: "Shipment";
   id: string;
   trackingId: string;
   origin: string;

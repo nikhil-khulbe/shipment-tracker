@@ -13,6 +13,7 @@ import { useLazyQuery, useMutation, useQuery } from "@apollo/client/react";
 import { ME_QUERY, SHIPMENT_QUERY } from "../graphql/queries";
 import { CREATE_SHIPMENT_MUTATION, LOGIN_MUTATION, UPDATE_STATUS_MUTATION } from "../graphql/mutations";
 import { getToken, saveToken, clearToken } from "../auth/token";
+import { onSessionExpired } from "../auth/session";
 import { apolloClient } from "../apollo";
 import { Text, TextInput } from "../components/ui";
 import { feedback } from "../feedback";
@@ -42,6 +43,17 @@ export function AdminScreen() {
       setCheckedStorage(true);
     })();
   }, []);
+
+  // The Apollo error link fires this the moment any request comes back
+  // UNAUTHENTICATED (expired / tampered token, deleted admin).
+  useEffect(
+    () =>
+      onSessionExpired(() => {
+        setHasStoredToken(false);
+        feedback.error("Session expired — please log in again");
+      }),
+    [],
+  );
 
   const {
     data: meData,
@@ -248,16 +260,41 @@ function UpdateStatusForm() {
 
   async function handleAdvance() {
     if (!shipment || !nextStatus) return;
+    const eventLocation = location.trim() || shipment.destination;
+    const eventNote = note.trim() || null;
     const result = await updateStatus({
       variables: {
         input: {
           trackingId: shipment.trackingId,
           status: nextStatus,
-          location: location.trim() || shipment.destination,
-          note: note.trim() || null,
+          location: eventLocation,
+          note: eventNote,
         },
       },
-    }).catch(() => null);
+      // Optimistic UI: assume the server accepts the move and write the
+      // predicted shipment into a temporary cache layer, so the chips and
+      // the Track tab update instantly. If the server rejects it, Apollo
+      // discards that layer and everything snaps back — no manual undo.
+      optimisticResponse: {
+        updateStatus: {
+          ...shipment,
+          currentStatus: nextStatus,
+          history: [
+            ...shipment.history,
+            {
+              __typename: "StatusEvent" as const,
+              status: nextStatus,
+              location: eventLocation,
+              note: eventNote,
+              timestamp: new Date().toISOString(),
+            },
+          ],
+        },
+      },
+    }).catch((e: Error) => {
+      feedback.error(e.message || "Couldn't update the shipment");
+      return null;
+    });
 
     if (result?.data?.updateStatus) {
       feedback.success(`Status updated to ${STATUS_LABELS[nextStatus]}`);
