@@ -1,23 +1,19 @@
-import { useState } from "react";
-import {
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { useMemo, useState } from "react";
+import { KeyboardAvoidingView, Pressable, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 import { useLazyQuery } from "@apollo/client/react";
 import { SHIPMENT_QUERY } from "../graphql/queries";
 import { ShipmentHeaderCard } from "../components/ShipmentHeaderCard";
+import { ShipmentSkeleton } from "../components/Skeleton";
 import { Timeline } from "../components/Timeline";
+import { Text, TextInput } from "../components/ui";
+import { feedback } from "../feedback";
+import { useTheme, type Theme } from "../theme/theme";
 import type { Shipment } from "../types";
 
 export function TrackScreen() {
+  const t = useTheme();
+  const styles = useMemo(() => makeStyles(t), [t]);
+
   const [trackingId, setTrackingId] = useState("");
   const [searchedId, setSearchedId] = useState<string | null>(null);
   const [runQuery, { data, loading, error, refetch }] = useLazyQuery<{ shipment: Shipment | null }>(
@@ -25,11 +21,12 @@ export function TrackScreen() {
     { fetchPolicy: "network-only" },
   );
 
-  function handleTrack() {
+  async function handleTrack() {
     const trimmed = trackingId.trim();
     if (!trimmed) return;
     setSearchedId(trimmed);
-    runQuery({ variables: { trackingId: trimmed } });
+    const result = await runQuery({ variables: { trackingId: trimmed } });
+    if (result.data?.shipment) feedback.tracked();
   }
 
   async function handleRefresh() {
@@ -40,15 +37,12 @@ export function TrackScreen() {
   const shipment = data?.shipment ?? null;
 
   return (
-    <KeyboardAvoidingView
-      style={styles.flex}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-    >
+    <KeyboardAvoidingView style={styles.flex} behavior="padding">
       <ScrollView
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
         refreshControl={
-          <RefreshControl refreshing={loading && hasSearched} onRefresh={handleRefresh} />
+          <RefreshControl refreshing={loading && hasSearched && !!shipment} onRefresh={handleRefresh} />
         }
       >
         <Text style={styles.title}>Track a shipment</Text>
@@ -58,7 +52,6 @@ export function TrackScreen() {
           <TextInput
             style={styles.input}
             placeholder="e.g. SHP-7K2M9QXZ"
-            placeholderTextColor="#9ca3af"
             autoCapitalize="characters"
             autoCorrect={false}
             value={trackingId}
@@ -71,16 +64,10 @@ export function TrackScreen() {
           </Pressable>
         </View>
 
-        {loading && !shipment && (
-          <View style={styles.centered}>
-            <ActivityIndicator />
-          </View>
-        )}
+        {loading && !shipment && <ShipmentSkeleton />}
 
         {!loading && error && (
-          <Text style={styles.error}>
-            Something went wrong reaching the server. Pull down to retry.
-          </Text>
+          <Text style={styles.error}>Something went wrong reaching the server. Pull down to retry.</Text>
         )}
 
         {!loading && hasSearched && !error && !shipment && (
@@ -98,59 +85,23 @@ export function TrackScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  flex: { flex: 1 },
-  content: {
-    padding: 20,
-    paddingBottom: 48,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: "700",
-    color: "#111827",
-  },
-  subtitle: {
-    fontSize: 14,
-    color: "#6b7280",
-    marginTop: 4,
-    marginBottom: 20,
-  },
-  searchRow: {
-    flexDirection: "row",
-    gap: 10,
-    marginBottom: 24,
-  },
-  input: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: "#d1d5db",
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 15,
-  },
-  button: {
-    backgroundColor: "#111827",
-    borderRadius: 10,
-    paddingHorizontal: 18,
-    justifyContent: "center",
-  },
-  buttonText: {
-    color: "#fff",
-    fontWeight: "600",
-  },
-  centered: {
-    paddingVertical: 40,
-    alignItems: "center",
-  },
-  error: {
-    color: "#dc2626",
-    textAlign: "center",
-    marginTop: 20,
-  },
-  empty: {
-    color: "#6b7280",
-    textAlign: "center",
-    marginTop: 20,
-  },
-});
+const makeStyles = (t: Theme) =>
+  StyleSheet.create({
+    flex: { flex: 1, backgroundColor: t.bg },
+    content: { padding: 20, paddingBottom: 120 },
+    title: { fontSize: 24, fontWeight: "700" },
+    subtitle: { fontSize: 14, color: t.textMuted, marginTop: 4, marginBottom: 20 },
+    searchRow: { flexDirection: "row", gap: 10, marginBottom: 24 },
+    input: {
+      flex: 1,
+      borderWidth: 1,
+      borderRadius: 10,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+      fontSize: 15,
+    },
+    button: { backgroundColor: t.primary, borderRadius: 10, paddingHorizontal: 18, justifyContent: "center" },
+    buttonText: { color: t.onPrimary, fontWeight: "600" },
+    error: { color: t.danger, textAlign: "center", marginTop: 20 },
+    empty: { color: t.textMuted, textAlign: "center", marginTop: 20 },
+  });

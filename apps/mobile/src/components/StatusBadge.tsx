@@ -1,27 +1,16 @@
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, View } from "react-native";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import type { ShipmentStatus } from "../types";
-
-const STATUS_LABELS: Record<ShipmentStatus, string> = {
-  CREATED: "Created",
-  PICKED_UP: "Picked Up",
-  IN_TRANSIT: "In Transit",
-  OUT_FOR_DELIVERY: "Out for Delivery",
-  DELIVERED: "Delivered",
-};
-
-const STATUS_COLORS: Record<ShipmentStatus, string> = {
-  CREATED: "#6b7280", // grey — just entered the system
-  PICKED_UP: "#2563eb", // blue
-  IN_TRANSIT: "#7c3aed", // purple
-  OUT_FOR_DELIVERY: "#d97706", // amber — almost there
-  DELIVERED: "#16a34a", // green — done
-};
+import { STATUS_ICONS, STATUS_LABELS } from "../theme/status";
+import { useTheme } from "../theme/theme";
+import { Text } from "./ui";
 
 export function StatusBadge({ status }: { status: ShipmentStatus }) {
-  const color = STATUS_COLORS[status];
+  const t = useTheme();
+  const color = t.status[status];
   return (
-    <View style={[styles.badge, { backgroundColor: `${color}1A`, borderColor: color }]}>
-      <View style={[styles.dot, { backgroundColor: color }]} />
+    <View style={[styles.badge, { backgroundColor: `${color}22`, borderColor: color }]}>
+      <Ionicons name={STATUS_ICONS[status]} size={14} color={color} style={styles.icon} />
       <Text style={[styles.label, { color }]}>{STATUS_LABELS[status]}</Text>
     </View>
   );
@@ -37,14 +26,6 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     borderWidth: 1,
   },
-  dot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    marginRight: 6,
-  },
-  label: {
-    fontSize: 13,
-    fontWeight: "600",
-  },
+  icon: { marginRight: 6 },
+  label: { fontSize: 13, fontWeight: "600" },
 });

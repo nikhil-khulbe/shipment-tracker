@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -6,8 +6,6 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
-  TextInput,
   View,
 } from "react-native";
 import * as Clipboard from "expo-clipboard";
@@ -16,6 +14,10 @@ import { ME_QUERY, SHIPMENT_QUERY } from "../graphql/queries";
 import { CREATE_SHIPMENT_MUTATION, LOGIN_MUTATION, UPDATE_STATUS_MUTATION } from "../graphql/mutations";
 import { getToken, saveToken, clearToken } from "../auth/token";
 import { apolloClient } from "../apollo";
+import { Text, TextInput } from "../components/ui";
+import { feedback } from "../feedback";
+import { STATUS_LABELS } from "../theme/status";
+import { useTheme, type Theme } from "../theme/theme";
 import { SHIPMENT_STATUSES, type Shipment, type ShipmentStatus } from "../types";
 
 /** The one legal next step for each status; empty means terminal (DELIVERED). */
@@ -28,6 +30,8 @@ const NEXT_STATUS: Record<ShipmentStatus, ShipmentStatus | null> = {
 };
 
 export function AdminScreen() {
+  const t = useTheme();
+  const styles = useMemo(() => makeStyles(t), [t]);
   const [checkedStorage, setCheckedStorage] = useState(false);
   const [hasStoredToken, setHasStoredToken] = useState(false);
 
@@ -61,7 +65,7 @@ export function AdminScreen() {
   if (!checkedStorage || (hasStoredToken && meLoading)) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator />
+        <ActivityIndicator color={t.text} />
       </View>
     );
   }
@@ -96,6 +100,8 @@ export function AdminScreen() {
 }
 
 function LoginForm({ onLoggedIn }: { onLoggedIn: () => void }) {
+  const t = useTheme();
+  const styles = useMemo(() => makeStyles(t), [t]);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [login, { loading, error }] = useMutation<{
@@ -139,7 +145,7 @@ function LoginForm({ onLoggedIn }: { onLoggedIn: () => void }) {
         {error && <Text style={styles.error}>{error.message}</Text>}
 
         <Pressable style={styles.primaryButton} onPress={handleSubmit} disabled={loading}>
-          {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryButtonText}>Log in</Text>}
+          {loading ? <ActivityIndicator color={t.onPrimary} /> : <Text style={styles.primaryButtonText}>Log in</Text>}
         </Pressable>
       </View>
     </KeyboardAvoidingView>
@@ -147,6 +153,8 @@ function LoginForm({ onLoggedIn }: { onLoggedIn: () => void }) {
 }
 
 function CreateShipmentForm() {
+  const t = useTheme();
+  const styles = useMemo(() => makeStyles(t), [t]);
   const [origin, setOrigin] = useState("");
   const [destination, setDestination] = useState("");
   const [receiverName, setReceiverName] = useState("");
@@ -161,6 +169,7 @@ function CreateShipmentForm() {
     if (!createdTrackingId) return;
     await Clipboard.setStringAsync(createdTrackingId);
     setCopied(true);
+    feedback.success("Tracking ID copied");
   }
 
   async function handleSubmit() {
@@ -172,6 +181,7 @@ function CreateShipmentForm() {
     if (created) {
       setCreatedTrackingId(created.trackingId);
       setCopied(false);
+      feedback.success("Shipment created");
       setOrigin("");
       setDestination("");
       setReceiverName("");
@@ -194,7 +204,7 @@ function CreateShipmentForm() {
       {error && <Text style={styles.error}>{error.message}</Text>}
 
       <Pressable style={styles.primaryButton} onPress={handleSubmit} disabled={loading}>
-        {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryButtonText}>Create shipment</Text>}
+        {loading ? <ActivityIndicator color={t.onPrimary} /> : <Text style={styles.primaryButtonText}>Create shipment</Text>}
       </Pressable>
 
       {createdTrackingId && (
@@ -210,6 +220,8 @@ function CreateShipmentForm() {
 }
 
 function UpdateStatusForm() {
+  const t = useTheme();
+  const styles = useMemo(() => makeStyles(t), [t]);
   const [trackingId, setTrackingId] = useState("");
   const [location, setLocation] = useState("");
   const [note, setNote] = useState("");
@@ -248,6 +260,7 @@ function UpdateStatusForm() {
     }).catch(() => null);
 
     if (result?.data?.updateStatus) {
+      feedback.success(`Status updated to ${STATUS_LABELS[nextStatus]}`);
       setLocation("");
       setNote("");
       // Re-run the lookup so the chip row reflects the new current status.
@@ -274,7 +287,7 @@ function UpdateStatusForm() {
         </Pressable>
       </View>
 
-      {loadingShipment && <ActivityIndicator style={styles.spacingTop} />}
+      {loadingShipment && <ActivityIndicator color={t.text} style={styles.spacingTop} />}
       {!loadingShipment && loadError && <Text style={styles.error}>Couldn't reach the server.</Text>}
       {!loadingShipment && data !== undefined && !shipment && (
         <Text style={styles.error}>No shipment found for that tracking ID.</Text>
@@ -326,7 +339,7 @@ function UpdateStatusForm() {
 
               <Pressable style={styles.primaryButton} onPress={handleAdvance} disabled={updating}>
                 {updating ? (
-                  <ActivityIndicator color="#fff" />
+                  <ActivityIndicator color={t.onPrimary} />
                 ) : (
                   <Text style={styles.primaryButtonText}>
                     Advance to {nextStatus.replace(/_/g, " ")}
@@ -343,69 +356,69 @@ function UpdateStatusForm() {
   );
 }
 
-const styles = StyleSheet.create({
-  flex: { flex: 1 },
-  centered: { flex: 1, alignItems: "center", justifyContent: "center" },
-  content: { padding: 20, paddingBottom: 120 },
-  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  title: { fontSize: 24, fontWeight: "700", color: "#111827" },
-  subtitle: { fontSize: 14, color: "#6b7280", marginTop: 4, marginBottom: 20 },
-  signedInAs: { fontSize: 13, color: "#6b7280", marginBottom: 24 },
-  logout: { color: "#dc2626", fontWeight: "600" },
-  label: { fontSize: 13, fontWeight: "600", color: "#374151", marginBottom: 6, marginTop: 14 },
-  input: {
-    borderWidth: 1,
-    borderColor: "#d1d5db",
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 15,
-  },
-  primaryButton: {
-    backgroundColor: "#111827",
-    borderRadius: 10,
-    paddingVertical: 14,
-    alignItems: "center",
-    marginTop: 18,
-  },
-  primaryButtonText: { color: "#fff", fontWeight: "600", fontSize: 15 },
-  secondaryButton: {
-    borderWidth: 1,
-    borderColor: "#111827",
-    borderRadius: 10,
-    paddingHorizontal: 16,
-    justifyContent: "center",
-  },
-  secondaryButtonText: { color: "#111827", fontWeight: "600" },
-  error: { color: "#dc2626", marginTop: 10 },
-  loginContainer: { flex: 1, justifyContent: "center", padding: 24 },
-  section: { marginBottom: 8 },
-  sectionTitle: { fontSize: 17, fontWeight: "700", color: "#111827", marginBottom: 4 },
-  divider: { height: 1, backgroundColor: "#e5e7eb", marginVertical: 28 },
-  searchRow: { flexDirection: "row", gap: 10, alignItems: "stretch" },
-  spacingTop: { marginTop: 14 },
-  successBanner: {
-    marginTop: 16,
-    padding: 14,
-    borderRadius: 10,
-    backgroundColor: "#ecfdf5",
-    borderWidth: 1,
-    borderColor: "#16a34a",
-  },
-  successLabel: { fontSize: 12, color: "#166534" },
-  successValue: { fontSize: 18, fontWeight: "700", color: "#166534", marginTop: 4, letterSpacing: 0.5 },
-  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  chip: {
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 999,
-    backgroundColor: "#f3f4f6",
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-  },
-  chipCurrent: { backgroundColor: "#e5e7eb", borderColor: "#9ca3af" },
-  chipNext: { backgroundColor: "#111827", borderColor: "#111827" },
-  chipText: { fontSize: 12, color: "#9ca3af", fontWeight: "600" },
-  chipTextCurrent: { color: "#374151" },
-  chipTextNext: { color: "#fff" },
-});
+const makeStyles = (t: Theme) =>
+  StyleSheet.create({
+    flex: { flex: 1, backgroundColor: t.bg },
+    centered: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: t.bg },
+    content: { padding: 20, paddingBottom: 120 },
+    header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+    title: { fontSize: 24, fontWeight: "700" },
+    subtitle: { fontSize: 14, color: t.textMuted, marginTop: 4, marginBottom: 20 },
+    signedInAs: { fontSize: 13, color: t.textMuted, marginBottom: 24 },
+    logout: { color: t.danger, fontWeight: "600" },
+    label: { fontSize: 13, fontWeight: "600", color: t.textMuted, marginBottom: 6, marginTop: 14 },
+    input: {
+      borderWidth: 1,
+      borderRadius: 10,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+      fontSize: 15,
+    },
+    primaryButton: {
+      backgroundColor: t.primary,
+      borderRadius: 10,
+      paddingVertical: 14,
+      alignItems: "center",
+      marginTop: 18,
+    },
+    primaryButtonText: { color: t.onPrimary, fontWeight: "600", fontSize: 15 },
+    secondaryButton: {
+      borderWidth: 1,
+      borderColor: t.text,
+      borderRadius: 10,
+      paddingHorizontal: 16,
+      justifyContent: "center",
+    },
+    secondaryButtonText: { fontWeight: "600" },
+    error: { color: t.danger, marginTop: 10 },
+    loginContainer: { flex: 1, justifyContent: "center", padding: 24 },
+    section: { marginBottom: 8 },
+    sectionTitle: { fontSize: 17, fontWeight: "700", marginBottom: 4 },
+    divider: { height: 1, backgroundColor: t.border, marginVertical: 28 },
+    searchRow: { flexDirection: "row", gap: 10, alignItems: "stretch" },
+    spacingTop: { marginTop: 14 },
+    successBanner: {
+      marginTop: 16,
+      padding: 14,
+      borderRadius: 10,
+      backgroundColor: t.successBg,
+      borderWidth: 1,
+      borderColor: t.success,
+    },
+    successLabel: { fontSize: 12, color: t.success },
+    successValue: { fontSize: 18, fontWeight: "700", color: t.success, marginTop: 4, letterSpacing: 0.5 },
+    chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+    chip: {
+      paddingVertical: 6,
+      paddingHorizontal: 10,
+      borderRadius: 999,
+      backgroundColor: t.surfaceAlt,
+      borderWidth: 1,
+      borderColor: t.border,
+    },
+    chipCurrent: { borderColor: t.textMuted },
+    chipNext: { backgroundColor: t.primary, borderColor: t.primary },
+    chipText: { fontSize: 12, color: t.textFaint, fontWeight: "600" },
+    chipTextCurrent: { color: t.text },
+    chipTextNext: { color: t.onPrimary },
+  });
