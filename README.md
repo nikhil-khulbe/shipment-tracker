@@ -5,7 +5,11 @@ A courier-tracking app (think Delhivery / Blue Dart): anyone can look up a parce
 > **Live demo:** _TODO — add Netlify URL after deploy_ · **Android APK:** _TODO — add GitHub Release link_
 > The API runs on a free Render instance and sleeps when idle — the first request can take 30–50 s to wake it.
 
-_Demo GIF and screenshots: TODO (`docs/screenshots/`)._
+| Track | Admin login |
+|---|---|
+| ![Track](docs/screenshots/track.jpg) | ![Admin](docs/screenshots/admin-login.jpg) |
+
+_Demo GIF: TODO._
 
 ## Stack
 
