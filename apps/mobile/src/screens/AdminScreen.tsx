@@ -15,6 +15,7 @@ import { CREATE_SHIPMENT_MUTATION, LOGIN_MUTATION, UPDATE_STATUS_MUTATION } from
 import { getToken, saveToken, clearToken } from "../auth/token";
 import { onSessionExpired } from "../auth/session";
 import { apolloClient } from "../apollo";
+import { ShipmentList } from "../components/ShipmentList";
 import { Text, TextInput } from "../components/ui";
 import { feedback } from "../feedback";
 import { STATUS_LABELS } from "../theme/status";
@@ -30,9 +31,18 @@ const NEXT_STATUS: Record<ShipmentStatus, ShipmentStatus | null> = {
   DELIVERED: null,
 };
 
+type Section = "list" | "create" | "update";
+const SECTIONS: { key: Section; label: string }[] = [
+  { key: "list", label: "Shipments" },
+  { key: "create", label: "New" },
+  { key: "update", label: "Update" },
+];
+
 export function AdminScreen() {
   const t = useTheme();
   const styles = useMemo(() => makeStyles(t), [t]);
+  const [section, setSection] = useState<Section>("list");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [checkedStorage, setCheckedStorage] = useState(false);
   const [hasStoredToken, setHasStoredToken] = useState(false);
 
@@ -88,13 +98,14 @@ export function AdminScreen() {
     return <LoginForm onLoggedIn={handleLoggedIn} />;
   }
 
+  function openForUpdate(trackingId: string) {
+    setSelectedId(trackingId);
+    setSection("update");
+  }
+
   return (
     <KeyboardAvoidingView style={styles.flex} behavior="padding">
-      <ScrollView
-        contentContainerStyle={styles.content}
-        keyboardShouldPersistTaps="handled"
-        automaticallyAdjustKeyboardInsets
-      >
+      <View style={styles.adminHeader}>
         <View style={styles.header}>
           <Text style={styles.title}>Admin</Text>
           <Pressable onPress={handleLogout}>
@@ -103,10 +114,30 @@ export function AdminScreen() {
         </View>
         <Text style={styles.signedInAs}>{meData?.me?.email}</Text>
 
-        <CreateShipmentForm />
-        <View style={styles.divider} />
-        <UpdateStatusForm />
-      </ScrollView>
+        <View style={styles.segments}>
+          {SECTIONS.map(({ key, label }) => (
+            <Pressable
+              key={key}
+              style={[styles.segment, section === key && styles.segmentActive]}
+              onPress={() => setSection(key)}
+            >
+              <Text style={[styles.segmentText, section === key && styles.segmentTextActive]}>{label}</Text>
+            </Pressable>
+          ))}
+        </View>
+      </View>
+
+      {section === "list" ? (
+        <ShipmentList onSelect={openForUpdate} />
+      ) : (
+        <ScrollView
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+          automaticallyAdjustKeyboardInsets
+        >
+          {section === "create" ? <CreateShipmentForm /> : <UpdateStatusForm initialTrackingId={selectedId} />}
+        </ScrollView>
+      )}
     </KeyboardAvoidingView>
   );
 }
@@ -172,7 +203,7 @@ function CreateShipmentForm() {
   const [receiverName, setReceiverName] = useState("");
   const [createShipment, { loading, error }] = useMutation<{ createShipment: Shipment }>(
     CREATE_SHIPMENT_MUTATION,
-    { refetchQueries: ["Shipment"] },
+    { refetchQueries: ["Shipment", "Shipments"] },
   );
   const [createdTrackingId, setCreatedTrackingId] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -231,7 +262,7 @@ function CreateShipmentForm() {
   );
 }
 
-function UpdateStatusForm() {
+function UpdateStatusForm({ initialTrackingId }: { initialTrackingId: string | null }) {
   const t = useTheme();
   const styles = useMemo(() => makeStyles(t), [t]);
   const [trackingId, setTrackingId] = useState("");
@@ -245,8 +276,16 @@ function UpdateStatusForm() {
   const [updateStatus, { loading: updating, error: updateError }] = useMutation<{
     updateStatus: Shipment;
   }>(UPDATE_STATUS_MUTATION, {
-    refetchQueries: ["Shipment"],
+    refetchQueries: ["Shipment", "Shipments"],
   });
+
+  // Arrived here by tapping a row in the list: fill the ID and load it.
+  useEffect(() => {
+    if (!initialTrackingId) return;
+    setTrackingId(initialTrackingId);
+    loadShipment({ variables: { trackingId: initialTrackingId } });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialTrackingId]);
 
   const shipment = data?.shipment ?? null;
   const nextStatus = shipment ? NEXT_STATUS[shipment.currentStatus] : null;
@@ -398,6 +437,18 @@ const makeStyles = (t: Theme) =>
     flex: { flex: 1, backgroundColor: t.bg },
     centered: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: t.bg },
     content: { padding: 20, paddingBottom: 120 },
+    adminHeader: { paddingHorizontal: 20, paddingTop: 20 },
+    segments: {
+      flexDirection: "row",
+      backgroundColor: t.surfaceAlt,
+      borderRadius: 10,
+      padding: 3,
+      marginBottom: 14,
+    },
+    segment: { flex: 1, alignItems: "center", paddingVertical: 8, borderRadius: 8 },
+    segmentActive: { backgroundColor: t.bg },
+    segmentText: { fontSize: 13, fontWeight: "600", color: t.textMuted },
+    segmentTextActive: { color: t.text },
     header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
     title: { fontSize: 24, fontWeight: "700" },
     subtitle: { fontSize: 14, color: t.textMuted, marginTop: 4, marginBottom: 20 },

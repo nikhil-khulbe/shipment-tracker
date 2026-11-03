@@ -43,5 +43,27 @@ const errorLink = new ErrorLink(({ error, operation }) => {
 
 export const apolloClient = new ApolloClient({
   link: from([errorLink, authLink, httpLink]),
-  cache: new InMemoryCache(),
+  cache: new InMemoryCache({
+    typePolicies: {
+      Query: {
+        fields: {
+          // Admin list. `status` and `search` identify a distinct list;
+          // `cursor` and `limit` do not — they just say which slice of that
+          // list to load. Excluding them from keyArgs is what lets fetchMore
+          // append to ONE cached list instead of creating one per cursor.
+          shipments: {
+            keyArgs: ["status", "search"],
+            merge(existing, incoming, { args, readField }) {
+              // No cursor = first page (initial load or a refetch): replace,
+              // otherwise a refetch would append the first page a second time.
+              if (!args?.cursor || !existing) return incoming;
+              const seen = new Set(existing.items.map((item: any) => readField("id", item)));
+              const fresh = incoming.items.filter((item: any) => !seen.has(readField("id", item)));
+              return { ...incoming, items: [...existing.items, ...fresh] };
+            },
+          },
+        },
+      },
+    },
+  }),
 });

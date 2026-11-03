@@ -27,3 +27,19 @@ export const ME_QUERY = gql`
     }
   }
 `;
+
+export const SHIPMENTS_QUERY = gql`
+  query Shipments($status: ShipmentStatus, $search: String, $cursor: String, $limit: Int) {
+    shipments(status: $status, search: $search, cursor: $cursor, limit: $limit) {
+      items {
+        id
+        trackingId
+        origin
+        destination
+        receiverName
+        currentStatus
+      }
+      nextCursor
+    }
+  }
+`;
