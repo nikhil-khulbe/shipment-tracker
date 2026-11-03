@@ -37,6 +37,12 @@ export const typeDefs = /* GraphQL */ `
     email: String!
   }
 
+  type ShipmentPage {
+    items: [Shipment!]!
+    "Opaque cursor for the next page; null when this is the last page."
+    nextCursor: String
+  }
+
   input CreateShipmentInput {
     origin: String!
     destination: String!
@@ -54,6 +60,9 @@ export const typeDefs = /* GraphQL */ `
   type Query {
     "Public. Returns null when no shipment matches the given tracking ID."
     shipment(trackingId: String!): Shipment
+
+    "Admin only. Newest-first, cursor-paginated list; optionally filtered by status and/or a tracking-ID prefix."
+    shipments(status: ShipmentStatus, search: String, cursor: String, limit: Int = 20): ShipmentPage!
 
     "Admin only. Confirms the bearer token is still valid."
     me: AdminProfile

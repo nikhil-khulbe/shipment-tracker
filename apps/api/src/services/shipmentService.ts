@@ -1,3 +1,4 @@
+import type { FilterQuery } from "mongoose";
 import { Shipment, type ShipmentDocument } from "../models/Shipment.js";
 import { generateTrackingId } from "../domain/trackingId.js";
 import { canTransition, type ShipmentStatus } from "../domain/status.js";
@@ -105,4 +106,82 @@ export async function updateStatus(input: UpdateStatusInput) {
   }
 
   return updated;
+}
+
+export const DEFAULT_PAGE_SIZE = 20;
+export const MAX_PAGE_SIZE = 50;
+
+export type ListShipmentsInput = {
+  status?: ShipmentStatus | null;
+  search?: string | null;
+  cursor?: string | null;
+  limit?: number | null;
+};
+
+type Cursor = { createdAt: Date; id: string };
+
+/** Opaque to clients: base64url of {c: ISO createdAt, i: _id}. */
+function encodeCursor(doc: { createdAt: Date; _id: { toString(): string } }): string {
+  return Buffer.from(JSON.stringify({ c: doc.createdAt.toISOString(), i: doc._id.toString() })).toString(
+    "base64url",
+  );
+}
+
+function decodeCursor(raw: string): Cursor {
+  try {
+    const parsed = JSON.parse(Buffer.from(raw, "base64url").toString("utf8")) as { c?: unknown; i?: unknown };
+    const createdAt = new Date(String(parsed.c));
+    if (Number.isNaN(createdAt.getTime()) || typeof parsed.i !== "string" || !/^[0-9a-f]{24}$/i.test(parsed.i)) {
+      throw new Error("bad cursor");
+    }
+    return { createdAt, id: parsed.i };
+  } catch {
+    throw badUserInput("Invalid cursor.");
+  }
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Newest-first page of shipments using keyset (cursor) pagination.
+ *
+ * Why not skip/limit: skip is O(skip) — Mongo walks and discards every
+ * skipped row — and drifts when rows are inserted while an admin is
+ * scrolling (a new shipment shifts everything down, duplicating the row at
+ * the page boundary). A cursor says "give me what sorts strictly after this
+ * exact (createdAt, _id)", which is index-backed and unaffected by inserts.
+ *
+ * We fetch limit + 1 rows: the extra row only tells us whether another page
+ * exists, and is dropped from the result.
+ */
+export async function listShipments(input: ListShipmentsInput) {
+  const limit = Math.min(Math.max(input.limit ?? DEFAULT_PAGE_SIZE, 1), MAX_PAGE_SIZE);
+  const filter: FilterQuery<ShipmentDocument> = {};
+
+  if (input.status) filter.currentStatus = input.status;
+
+  const search = input.search?.trim().toUpperCase();
+  // Anchored prefix, so Mongo can use the trackingId index. An unanchored
+  // regex would scan the whole collection.
+  if (search) filter.trackingId = { $regex: `^${escapeRegex(search)}` };
+
+  if (input.cursor) {
+    const { createdAt, id } = decodeCursor(input.cursor);
+    filter.$or = [{ createdAt: { $lt: createdAt } }, { createdAt, _id: { $lt: id } }];
+  }
+
+  const rows = await Shipment.find(filter)
+    .sort({ createdAt: -1, _id: -1 })
+    .limit(limit + 1)
+    .lean();
+
+  const hasMore = rows.length > limit;
+  const items = hasMore ? rows.slice(0, limit) : rows;
+  const last = items[items.length - 1];
+  return {
+    items,
+    nextCursor: hasMore && last ? encodeCursor(last as any) : null,
+  };
 }

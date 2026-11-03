@@ -35,6 +35,16 @@ export const shipmentQueries = {
     return doc ? serializeShipment(doc) : null;
   },
 
+  shipments: async (
+    _parent: unknown,
+    args: shipmentService.ListShipmentsInput,
+    context: GraphQLContext,
+  ) => {
+    await requireAdmin(context, Admin);
+    const page = await shipmentService.listShipments(args);
+    return { items: page.items.map(serializeShipment), nextCursor: page.nextCursor };
+  },
+
   me: async (_parent: unknown, _args: unknown, context: GraphQLContext) => {
     const admin = await requireAdmin(context, Admin);
     return { id: admin.id, email: admin.email };

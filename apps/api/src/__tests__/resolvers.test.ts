@@ -241,6 +241,83 @@ describe("Mutation.login", () => {
   });
 });
 
+const SHIPMENTS_QUERY = `
+  query Shipments($status: ShipmentStatus, $search: String, $cursor: String, $limit: Int) {
+    shipments(status: $status, search: $search, cursor: $cursor, limit: $limit) {
+      items {
+        trackingId
+        currentStatus
+      }
+      nextCursor
+    }
+  }
+`;
+
+describe("Query.shipments (admin list)", () => {
+  test("requires an admin", async () => {
+    const result = await execute(server, { query: SHIPMENTS_QUERY, admin: null });
+    expect(result.errors?.[0]?.extensions?.code).toBe("UNAUTHENTICATED");
+  });
+
+  test("pages through every shipment exactly once, newest first, and honours the status filter and search", async () => {
+    const admin = await seedAdmin();
+
+    // 7 shipments. Several deliberately share a createdAt millisecond so the
+    // (createdAt, _id) tie-break is exercised — a createdAt-only cursor would
+    // skip or repeat rows at those boundaries.
+    const sameInstant = new Date("2026-03-01T00:00:00Z");
+    for (let i = 1; i <= 7; i++) {
+      await Shipment.create({
+        trackingId: `SHP-PAGE000${i}`,
+        origin: "Delhi",
+        destination: "Mumbai",
+        receiverName: "Test Receiver",
+        currentStatus: i % 2 === 1 ? "IN_TRANSIT" : "CREATED",
+        history: [{ status: "CREATED", location: "Delhi", timestamp: sameInstant }],
+        createdAt: i <= 3 ? new Date("2026-02-01T00:00:00Z") : sameInstant,
+      });
+    }
+
+    const seen: string[] = [];
+    let cursor: string | null = null;
+    let pages = 0;
+    do {
+      const page: any = await execute(server, { query: SHIPMENTS_QUERY, variables: { limit: 3, cursor }, admin });
+      expect(page.errors).toBeUndefined();
+      const { items, nextCursor } = page.data.shipments;
+      expect(items.length).toBeLessThanOrEqual(3);
+      seen.push(...items.map((item: any) => item.trackingId));
+      cursor = nextCursor;
+      pages++;
+    } while (cursor && pages < 10);
+
+    expect(pages).toBe(3); // 3 + 3 + 1
+    expect(new Set(seen).size).toBe(7); // no duplicates
+    expect(seen).toHaveLength(7); // none missing
+    // Newest createdAt first: the four "sameInstant" rows (4..7) precede 1..3.
+    expect(seen.slice(0, 4).sort()).toEqual(["SHP-PAGE0004", "SHP-PAGE0005", "SHP-PAGE0006", "SHP-PAGE0007"]);
+
+    const filtered: any = await execute(server, {
+      query: SHIPMENTS_QUERY,
+      variables: { status: "IN_TRANSIT", limit: 50 },
+      admin,
+    });
+    const filteredIds = filtered.data.shipments.items.map((item: any) => item.trackingId).sort();
+    expect(filteredIds).toEqual(["SHP-PAGE0001", "SHP-PAGE0003", "SHP-PAGE0005", "SHP-PAGE0007"]);
+    expect(filtered.data.shipments.nextCursor).toBeNull();
+
+    const searched: any = await execute(server, {
+      query: SHIPMENTS_QUERY,
+      variables: { search: "shp-page0003" }, // case-insensitive prefix
+      admin,
+    });
+    expect(searched.data.shipments.items.map((item: any) => item.trackingId)).toEqual(["SHP-PAGE0003"]);
+
+    const badCursor = await execute(server, { query: SHIPMENTS_QUERY, variables: { cursor: "garbage" }, admin });
+    expect(badCursor.errors?.[0]?.extensions?.code).toBe("BAD_USER_INPUT");
+  });
+});
+
 describe("canTransition (pure unit test, no DB)", () => {
   test("only allows moving one step forward through the pipeline; DELIVERED is terminal", () => {
     for (const from of SHIPMENT_STATUSES) {

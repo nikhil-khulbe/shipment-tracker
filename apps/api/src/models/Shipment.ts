@@ -81,6 +81,13 @@ const shipmentSchema = new Schema(
 // index on this collection is visible in one place.
 shipmentSchema.index({ trackingId: 1 }, { unique: true });
 
+// Admin list: newest first. `_id` is the tie-breaker so the sort key is
+// unique even when two shipments share a createdAt millisecond — which is
+// what makes cursor pagination stable (see listShipments).
+shipmentSchema.index({ createdAt: -1, _id: -1 });
+// Same ordering, narrowed by status, for the filter chips.
+shipmentSchema.index({ currentStatus: 1, createdAt: -1, _id: -1 });
+
 export type ShipmentDocument = InferSchemaType<typeof shipmentSchema>;
 
 export const Shipment = model("Shipment", shipmentSchema);
