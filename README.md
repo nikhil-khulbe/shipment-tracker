@@ -1,11 +1,11 @@
 # Shipment Tracker
 
-A courier-tracking app (think Delhivery / Blue Dart): anyone can look up a parcel by tracking ID and see its timeline; an admin can log in, create shipments and advance their status. Built as a full-stack TypeScript monorepo — **GraphQL API + React Native (Expo) app** that runs on Android, iOS and web.
+A courier-tracking app (think Delhivery / Blue Dart): anyone can look up a parcel by tracking ID and see its timeline; anyone can open the Admin tab to create shipments and advance their status (no login — it is intentionally open for demo/testing). Built as a full-stack TypeScript monorepo — **GraphQL API + React Native (Expo) app** that runs on Android, iOS and web.
 
 > **Live demo:** _TODO — add Netlify URL after deploy_ · **Android APK:** _TODO — add GitHub Release link_
 > The API runs on a free Render instance and sleeps when idle — the first request can take 30–50 s to wake it.
 
-| Track | Admin login |
+| Track | Admin |
 |---|---|
 | ![Track](docs/screenshots/track.jpg) | ![Admin](docs/screenshots/admin-login.jpg) |
 
@@ -24,7 +24,7 @@ _Demo GIF: TODO._
 ## Features
 
 - **Public:** `shipment(trackingId)` query → current status + full timeline.
-- **Admin (JWT):** `login`, `createShipment`, `updateStatus`, `me`, and `shipments(status, search, cursor, limit)` — a cursor-paginated list.
+- **Admin (open, no login):** `createShipment`, `updateStatus`, and `shipments(status, search, cursor, limit)` — a cursor-paginated list. The `login` and `me` operations still exist in the API but the app no longer uses them.
 - **Status state machine:** `CREATED → PICKED_UP → IN_TRANSIT → OUT_FOR_DELIVERY → DELIVERED`, one step forward at a time, `DELIVERED` is terminal. Illegal moves are rejected with `INVALID_STATUS_TRANSITION`.
 - Status history is append-only.
 
@@ -35,7 +35,6 @@ _Demo GIF: TODO._
 - **Deep links:** `/track/SHP-XXXXXXXX` on web, `shipmenttracker://track/SHP-XXXXXXXX` on native; a "Share link" button.
 - Auto-refresh every 30 s ("Updated just now"), paused while the app is backgrounded; pull-to-refresh.
 - **Optimistic status updates** that roll back automatically if the server rejects them.
-- Session expiry is handled globally: any `UNAUTHENTICATED` response clears the token and returns the admin to login.
 - Admin list: search by tracking-ID prefix, status filter chips, infinite scroll; tap a row to update it.
 - **Offline:** last result is cached on-device and shown without a connection, recent searches appear as chips, and an offline banner slides in.
 
@@ -103,11 +102,11 @@ npm test -w api
 Eight tests run through `ApolloServer.executeOperation` against an in-memory MongoDB, so schema, context and error formatting are all exercised:
 
 1. Public `shipment` query returns full history, and `null` for an unknown ID.
-2. `createShipment` requires auth (and writes nothing without it); creates a correct initial state.
+2. `createShipment` is open to anyone and creates a correct initial state.
 3. `updateStatus` advances legally and appends to history.
 4. `updateStatus` rejects an illegal transition **and leaves the document unchanged**.
 5. `login` succeeds, and fails with an identical error for wrong password vs. unknown email.
-6. The admin list requires auth.
+6. The admin list is open to anyone.
 7. The admin list pages through every shipment exactly once (including rows that share a `createdAt`), newest first, and honours the status filter, tracking-ID search and rejects a bad cursor.
 8. `canTransition` over the full 5×5 matrix (pure unit test).
 

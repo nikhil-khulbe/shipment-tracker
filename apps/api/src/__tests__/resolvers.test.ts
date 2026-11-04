@@ -125,18 +125,8 @@ describe("Query.shipment", () => {
 });
 
 describe("Mutation.createShipment", () => {
-  test("requires an admin and, once authenticated, creates a shipment in CREATED state", async () => {
-    const withoutAuth = await execute(server, {
-      query: CREATE_SHIPMENT_MUTATION,
-      variables: {
-        input: { origin: "Delhi", destination: "Pune", receiverName: "Asha Rao" },
-      },
-      admin: null,
-    });
-    expect(withoutAuth.errors?.[0]?.extensions?.code).toBe("UNAUTHENTICATED");
-    await expect(Shipment.countDocuments()).resolves.toBe(0);
-
-    const admin = await seedAdmin();
+  test("is open to anyone and creates a shipment in CREATED state", async () => {
+    const admin = null;
     const withAuth = await execute(server, {
       query: CREATE_SHIPMENT_MUTATION,
       variables: {
@@ -254,9 +244,9 @@ const SHIPMENTS_QUERY = `
 `;
 
 describe("Query.shipments (admin list)", () => {
-  test("requires an admin", async () => {
+  test("is open to anyone", async () => {
     const result = await execute(server, { query: SHIPMENTS_QUERY, admin: null });
-    expect(result.errors?.[0]?.extensions?.code).toBe("UNAUTHENTICATED");
+    expect(result.errors).toBeUndefined();
   });
 
   test("pages through every shipment exactly once, newest first, and honours the status filter and search", async () => {

@@ -38,9 +38,7 @@ export const shipmentQueries = {
   shipments: async (
     _parent: unknown,
     args: shipmentService.ListShipmentsInput,
-    context: GraphQLContext,
   ) => {
-    await requireAdmin(context, Admin);
     const page = await shipmentService.listShipments(args);
     return { items: page.items.map(serializeShipment), nextCursor: page.nextCursor };
   },
@@ -55,9 +53,7 @@ export const shipmentMutations = {
   createShipment: async (
     _parent: unknown,
     args: { input: shipmentService.CreateShipmentInput },
-    context: GraphQLContext,
   ) => {
-    await requireAdmin(context, Admin);
     const doc = await shipmentService.createShipment(args.input);
     return serializeShipment(doc);
   },
@@ -65,9 +61,7 @@ export const shipmentMutations = {
   updateStatus: async (
     _parent: unknown,
     args: { input: { trackingId: string; status: string; location: string; note?: string | null } },
-    context: GraphQLContext,
   ) => {
-    await requireAdmin(context, Admin);
     if (!isShipmentStatus(args.input.status)) {
       throw badUserInput(`"${args.input.status}" is not a valid shipment status.`);
     }

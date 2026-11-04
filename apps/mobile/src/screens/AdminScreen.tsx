@@ -9,13 +9,9 @@ import {
   View,
 } from "react-native";
 import * as Clipboard from "expo-clipboard";
-import { useLazyQuery, useMutation, useQuery } from "@apollo/client/react";
-import { ME_QUERY, SHIPMENT_QUERY } from "../graphql/queries";
-import { CREATE_SHIPMENT_MUTATION, LOGIN_MUTATION, UPDATE_STATUS_MUTATION } from "../graphql/mutations";
-import { getToken, saveToken, clearToken } from "../auth/token";
-import { onSessionExpired } from "../auth/session";
-import { apolloClient } from "../apollo";
-import { clearPersistedCache } from "../cachePersist";
+import { useLazyQuery, useMutation } from "@apollo/client/react";
+import { SHIPMENT_QUERY } from "../graphql/queries";
+import { CREATE_SHIPMENT_MUTATION, UPDATE_STATUS_MUTATION } from "../graphql/mutations";
 import { ShipmentList } from "../components/ShipmentList";
 import { Text, TextInput } from "../components/ui";
 import { feedback } from "../feedback";
@@ -44,61 +40,6 @@ export function AdminScreen() {
   const styles = useMemo(() => makeStyles(t), [t]);
   const [section, setSection] = useState<Section>("list");
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [checkedStorage, setCheckedStorage] = useState(false);
-  const [hasStoredToken, setHasStoredToken] = useState(false);
-
-  useEffect(() => {
-    (async () => {
-      const token = await getToken();
-      setHasStoredToken(Boolean(token));
-      setCheckedStorage(true);
-    })();
-  }, []);
-
-  // The Apollo error link fires this the moment any request comes back
-  // UNAUTHENTICATED (expired / tampered token, deleted admin).
-  useEffect(
-    () =>
-      onSessionExpired(() => {
-        setHasStoredToken(false);
-        feedback.error("Session expired — please log in again");
-      }),
-    [],
-  );
-
-  const {
-    data: meData,
-    loading: meLoading,
-    error: meError,
-  } = useQuery<{ me: { id: string; email: string } | null }>(ME_QUERY, {
-    skip: !checkedStorage || !hasStoredToken,
-    fetchPolicy: "network-only",
-  });
-
-  async function handleLoggedIn() {
-    setHasStoredToken(true);
-  }
-
-  async function handleLogout() {
-    await clearToken();
-    await apolloClient.resetStore();
-    await clearPersistedCache();
-    setHasStoredToken(false);
-  }
-
-  if (!checkedStorage || (hasStoredToken && meLoading)) {
-    return (
-      <View style={styles.centered}>
-        <ActivityIndicator color={t.text} />
-      </View>
-    );
-  }
-
-  const isLoggedIn = hasStoredToken && !meError && meData?.me != null;
-
-  if (!isLoggedIn) {
-    return <LoginForm onLoggedIn={handleLoggedIn} />;
-  }
 
   function openForUpdate(trackingId: string) {
     setSelectedId(trackingId);
@@ -110,11 +51,8 @@ export function AdminScreen() {
       <View style={styles.adminHeader}>
         <View style={styles.header}>
           <Text style={styles.title}>Admin</Text>
-          <Pressable onPress={handleLogout}>
-            <Text style={styles.logout}>Log out</Text>
-          </Pressable>
         </View>
-        <Text style={styles.signedInAs}>{meData?.me?.email}</Text>
+        <Text style={styles.signedInAs}>Create shipments and update their status.</Text>
 
         <View style={styles.segments}>
           {SECTIONS.map(({ key, label }) => (
@@ -140,59 +78,6 @@ export function AdminScreen() {
           {section === "create" ? <CreateShipmentForm /> : <UpdateStatusForm initialTrackingId={selectedId} />}
         </ScrollView>
       )}
-    </KeyboardAvoidingView>
-  );
-}
-
-function LoginForm({ onLoggedIn }: { onLoggedIn: () => void }) {
-  const t = useTheme();
-  const styles = useMemo(() => makeStyles(t), [t]);
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [login, { loading, error }] = useMutation<{
-    login: { token: string; email: string; expiresIn: number };
-  }>(LOGIN_MUTATION);
-
-  async function handleSubmit() {
-    const result = await login({ variables: { email: email.trim(), password } }).catch(() => null);
-    const token = result?.data?.login?.token;
-    if (token) {
-      await saveToken(token);
-      onLoggedIn();
-    }
-  }
-
-  return (
-    <KeyboardAvoidingView style={styles.flex} behavior="padding">
-      <View style={styles.loginContainer}>
-        <Text style={styles.title}>Admin login</Text>
-        <Text style={styles.subtitle}>Sign in to create shipments and update their status.</Text>
-
-        <Text style={styles.label}>Email</Text>
-        <TextInput
-          style={styles.input}
-          autoCapitalize="none"
-          autoCorrect={false}
-          keyboardType="email-address"
-          value={email}
-          onChangeText={setEmail}
-        />
-
-        <Text style={styles.label}>Password</Text>
-        <TextInput
-          style={styles.input}
-          secureTextEntry
-          value={password}
-          onChangeText={setPassword}
-          onSubmitEditing={handleSubmit}
-        />
-
-        {error && <Text style={styles.error}>{error.message}</Text>}
-
-        <Pressable style={styles.primaryButton} onPress={handleSubmit} disabled={loading}>
-          {loading ? <ActivityIndicator color={t.onPrimary} /> : <Text style={styles.primaryButtonText}>Log in</Text>}
-        </Pressable>
-      </View>
     </KeyboardAvoidingView>
   );
 }
