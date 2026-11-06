@@ -14,6 +14,7 @@ import { Shipment } from "./models/Shipment.js";
 import { Admin } from "./models/Admin.js";
 import { depthLimit } from "./depthLimit.js";
 import { apiLimiter, loginLimiter } from "./rateLimit.js";
+import { logger, requestLogger } from "./logger.js";
 
 async function main() {
   await mongoose.connect(config.mongodbUri);
@@ -38,7 +39,7 @@ async function main() {
       if (!isKnownError) {
         // Anything we didn't deliberately throw (a bug, a DB hiccup) is
         // logged in full server-side but never echoed to the client.
-        console.error("Unhandled GraphQL error:", error);
+        logger.error({ err: error }, "Unhandled GraphQL error");
         if (config.isProduction) {
           return {
             message: "Internal server error.",
@@ -63,6 +64,8 @@ async function main() {
     }),
   );
   app.use(express.json({ limit: "100kb" }));
+  // /healthz is polled by the host every few seconds; logging it would bury real traffic.
+  app.use("/graphql", requestLogger);
 
   app.get("/healthz", (_req, res) => {
     res.json({ ok: true });
@@ -72,11 +75,11 @@ async function main() {
   app.use("/graphql", expressMiddleware(server, { context: buildContext }));
 
   app.listen(config.port, () => {
-    console.log(`API ready at http://localhost:${config.port}/graphql`);
+    logger.info({ port: config.port, requireAdmin: config.requireAdmin }, "API ready");
   });
 }
 
 main().catch((err) => {
-  console.error("Failed to start server:", err);
+  logger.fatal({ err }, "Failed to start server");
   process.exit(1);
 });
