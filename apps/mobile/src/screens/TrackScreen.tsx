@@ -6,6 +6,7 @@ import {
   Pressable,
   RefreshControl,
   ScrollView,
+  Linking,
   Share,
   StyleSheet,
   View,
@@ -21,6 +22,8 @@ import { Timeline } from "../components/Timeline";
 import { Text, TextInput } from "../components/ui";
 import { feedback } from "../feedback";
 import { useRecentSearches } from "../recentSearches";
+import { useSavedShipments } from "../savedShipments";
+import { SavedShipments } from "../components/SavedShipments";
 import { buildShareUrl } from "../links";
 import type { RootTabParamList } from "../navigation";
 import { useTheme, type Theme } from "../theme/theme";
@@ -56,6 +59,7 @@ export function TrackScreen() {
   // haptic fires for searches and deep links but not for background polls.
   const userInitiated = useRef(false);
   const { recent, add: addRecent } = useRecentSearches();
+  const { saved, isSaved, toggle: toggleSaved } = useSavedShipments();
 
   const { data, error, networkStatus, refetch, startPolling, stopPolling } = useQuery<{
     shipment: Shipment | null;
@@ -147,6 +151,15 @@ export function TrackScreen() {
     await Share.share(Platform.OS === "ios" ? { message, url } : { message }).catch(() => {});
   }
 
+  function handleRoute() {
+    if (!shipment) return;
+    // A Google Maps directions link works on every platform without an API key.
+    const url =
+      "https://www.google.com/maps/dir/?api=1" +
+      `&origin=${encodeURIComponent(shipment.origin)}&destination=${encodeURIComponent(shipment.destination)}`;
+    Linking.openURL(url).catch(() => feedback.error("Couldn't open maps"));
+  }
+
   const updatedLabel = useUpdatedLabel(updatedAt);
   const hasSearched = searchedId !== null;
 
@@ -187,6 +200,8 @@ export function TrackScreen() {
           </View>
         )}
 
+        {!hasSearched && <SavedShipments ids={saved} onOpen={search} onRemove={toggleSaved} />}
+
         {isInitialLoad && !shipment && <ShipmentSkeleton />}
 
         {!isInitialLoad && error && !shipment && (
@@ -201,10 +216,27 @@ export function TrackScreen() {
           <View>
             <View style={styles.metaRow}>
               <Text style={styles.updated}>{updatedLabel ?? ""}</Text>
-              <Pressable style={styles.shareButton} onPress={handleShare} hitSlop={8}>
-                <Ionicons name="share-outline" size={16} color={t.text} />
-                <Text style={styles.shareText}>Share link</Text>
-              </Pressable>
+              <View style={styles.actions}>
+                <Pressable
+                  style={styles.shareButton}
+                  onPress={() => toggleSaved(shipment.trackingId)}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: isSaved(shipment.trackingId) }}
+                  accessibilityLabel={isSaved(shipment.trackingId) ? "Remove from my shipments" : "Save to my shipments"}
+                >
+                  <Ionicons name={isSaved(shipment.trackingId) ? "bookmark" : "bookmark-outline"} size={16} color={t.text} />
+                  <Text style={styles.shareText}>{isSaved(shipment.trackingId) ? "Saved" : "Save"}</Text>
+                </Pressable>
+                <Pressable style={styles.shareButton} onPress={handleRoute} hitSlop={8} accessibilityRole="link">
+                  <Ionicons name="map-outline" size={16} color={t.text} />
+                  <Text style={styles.shareText}>Route</Text>
+                </Pressable>
+                <Pressable style={styles.shareButton} onPress={handleShare} hitSlop={8} accessibilityRole="button">
+                  <Ionicons name="share-outline" size={16} color={t.text} />
+                  <Text style={styles.shareText}>Share</Text>
+                </Pressable>
+              </View>
             </View>
             <ShipmentHeaderCard shipment={shipment} />
             <Timeline events={shipment.history} />
@@ -247,6 +279,7 @@ const makeStyles = (t: Theme) =>
     empty: { color: t.textMuted, textAlign: "center", marginTop: 20 },
     metaRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 },
     updated: { fontSize: 12, color: t.textFaint },
+    actions: { flexDirection: "row", alignItems: "center", gap: 16 },
     shareButton: { flexDirection: "row", alignItems: "center", gap: 6 },
     shareText: { fontSize: 13, fontWeight: "600" },
   });

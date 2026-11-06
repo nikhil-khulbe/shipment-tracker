@@ -27,6 +27,8 @@ import { StatusBadge } from "../components/StatusBadge";
 import { DashboardPanel } from "../components/admin/DashboardPanel";
 import { ImportPanel } from "../components/admin/ImportPanel";
 import { EditShipmentPanel } from "../components/admin/EditShipmentPanel";
+import { LabelModal } from "../components/admin/LabelModal";
+import { ScannerModal } from "../components/admin/ScannerModal";
 
 const ETA_OPTIONS = [
   { days: 1, label: "Tomorrow" },
@@ -415,6 +417,8 @@ function UpdateStatusForm({ initialTrackingId, role }: { initialTrackingId: stri
   const [chosen, setChosen] = useState<ShipmentStatus | null>(null);
   const [deliveredTo, setDeliveredTo] = useState("");
   const [otp, setOtp] = useState("");
+  const [showScanner, setShowScanner] = useState(false);
+  const [showLabel, setShowLabel] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
   const [loadShipment, { data, loading: loadingShipment, error: loadError }] = useLazyQuery<{
@@ -537,6 +541,14 @@ function UpdateStatusForm({ initialTrackingId, role }: { initialTrackingId: stri
         <Pressable style={styles.secondaryButton} onPress={handleLoad}>
           <Text style={styles.secondaryButtonText}>Load</Text>
         </Pressable>
+        <Pressable
+          style={styles.secondaryButton}
+          onPress={() => setShowScanner(true)}
+          accessibilityRole="button"
+          accessibilityLabel="Scan a label with the camera"
+        >
+          <Text style={styles.secondaryButtonText}>Scan</Text>
+        </Pressable>
       </View>
 
       {loadingShipment && <ActivityIndicator color={t.text} style={styles.spacingTop} />}
@@ -632,11 +644,31 @@ function UpdateStatusForm({ initialTrackingId, role }: { initialTrackingId: stri
             </Text>
           )}
 
+          <Pressable
+            style={[styles.secondaryButton, { alignSelf: "flex-start", paddingVertical: 10, marginTop: 24 }]}
+            onPress={() => setShowLabel(true)}
+            accessibilityRole="button"
+          >
+            <Text style={styles.secondaryButtonText}>Print label</Text>
+          </Pressable>
+
           {role === "ADMIN" && (
             <EditShipmentPanel key={`${shipment.trackingId}-${shipment.edits?.length ?? 0}`} shipment={shipment} />
           )}
         </View>
       )}
+
+      {showScanner && (
+        <ScannerModal
+          onClose={() => setShowScanner(false)}
+          onScan={(id) => {
+            setShowScanner(false);
+            setTrackingId(id);
+            loadShipment({ variables: { trackingId: id } });
+          }}
+        />
+      )}
+      {showLabel && shipment && <LabelModal shipment={shipment} onClose={() => setShowLabel(false)} />}
     </View>
   );
 }

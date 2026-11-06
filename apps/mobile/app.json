@@ -23,7 +23,13 @@
     },
     "plugins": [
       "expo-secure-store",
-      "expo-font"
+      "expo-font",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow Shipment Tracker to use the camera to scan shipping labels."
+        }
+      ]
     ],
     "scheme": "shipmenttracker"
   }
