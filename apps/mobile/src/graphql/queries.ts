@@ -14,6 +14,18 @@ export const SHIPMENT_FIELDS = gql`
     weightKg
     description
     estimatedDelivery
+    deliveredTo
+    deliveryOtp
+    createdBy
+    edits {
+      at
+      by
+      changes {
+        field
+        from
+        to
+      }
+    }
     currentStatus
     allowedNextStatuses
     history {
@@ -21,6 +33,7 @@ export const SHIPMENT_FIELDS = gql`
       location
       note
       timestamp
+      updatedBy
     }
   }
 `;
@@ -45,6 +58,32 @@ export const ME_QUERY = gql`
     me {
       id
       email
+      role
+    }
+  }
+`;
+
+export const DASHBOARD_QUERY = gql`
+  query Dashboard($stuckAfterHours: Int) {
+    dashboardStats(stuckAfterHours: $stuckAfterHours) {
+      total
+      overdueCount
+      byStatus {
+        status
+        count
+      }
+      createdPerDay {
+        date
+        count
+      }
+      stuck {
+        id
+        trackingId
+        origin
+        destination
+        currentStatus
+        updatedAt
+      }
     }
   }
 `;
@@ -59,6 +98,7 @@ export const SHIPMENTS_QUERY = gql`
         destination
         receiverName
         currentStatus
+        allowedNextStatuses
       }
       nextCursor
     }

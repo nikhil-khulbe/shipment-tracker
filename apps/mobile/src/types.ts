@@ -27,12 +27,22 @@ export type ShipmentStatus = (typeof SHIPMENT_STATUSES)[number];
 export const PACKAGE_TYPES = ["DOCUMENT", "PARCEL", "FRAGILE", "ELECTRONICS", "OTHER"] as const;
 export type PackageType = (typeof PACKAGE_TYPES)[number];
 
+export type Role = "ADMIN" | "DRIVER";
+
+export type ShipmentEdit = {
+  at: string;
+  by?: string | null;
+  changes: { field: string; from?: string | null; to?: string | null }[];
+};
+
 export type StatusEvent = {
   __typename?: "StatusEvent";
   status: ShipmentStatus;
   location: string;
   note?: string | null;
   timestamp: string;
+  /** Who made the change. Staff only. */
+  updatedBy?: string | null;
 };
 
 export type Shipment = {
@@ -53,5 +63,12 @@ export type Shipment = {
   currentStatus: ShipmentStatus;
   /** Computed by the API: the statuses this shipment may move to next. */
   allowedNextStatuses?: ShipmentStatus[];
+  /** Who received the parcel (set when delivered). */
+  deliveredTo?: string | null;
+  /** The receiver's 4-digit delivery code. ADMIN accounts only; null otherwise. */
+  deliveryOtp?: string | null;
+  createdBy?: string | null;
+  /** Edit log. Empty unless the viewer is logged-in staff. */
+  edits?: ShipmentEdit[];
   history: StatusEvent[];
 };

@@ -22,8 +22,11 @@ import { feedback } from "../feedback";
 import { STATUS_LABELS } from "../theme/status";
 import { useTheme, type Theme } from "../theme/theme";
 import { etaInDays } from "../eta";
-import { isExceptionStatus, PACKAGE_TYPES, type PackageType, type Shipment, type ShipmentStatus } from "../types";
+import { isExceptionStatus, PACKAGE_TYPES, type PackageType, type Role, type Shipment, type ShipmentStatus } from "../types";
 import { StatusBadge } from "../components/StatusBadge";
+import { DashboardPanel } from "../components/admin/DashboardPanel";
+import { ImportPanel } from "../components/admin/ImportPanel";
+import { EditShipmentPanel } from "../components/admin/EditShipmentPanel";
 
 const ETA_OPTIONS = [
   { days: 1, label: "Tomorrow" },
@@ -33,11 +36,14 @@ const ETA_OPTIONS = [
   { days: 7, label: "1 week" },
 ];
 
-type Section = "list" | "create" | "update";
-const SECTIONS: { key: Section; label: string }[] = [
+type Section = "dashboard" | "list" | "create" | "update" | "import";
+/** adminOnly sections are hidden from DRIVER accounts (the API enforces it too). */
+const SECTIONS: { key: Section; label: string; adminOnly?: boolean }[] = [
+  { key: "dashboard", label: "Overview", adminOnly: true },
   { key: "list", label: "Shipments" },
-  { key: "create", label: "New" },
+  { key: "create", label: "New", adminOnly: true },
   { key: "update", label: "Update" },
+  { key: "import", label: "Import", adminOnly: true },
 ];
 
 /**
@@ -83,7 +89,7 @@ export function AdminScreen() {
     data: meData,
     loading: meLoading,
     error: meError,
-  } = useQuery<{ me: { id: string; email: string } | null }>(ME_QUERY, {
+  } = useQuery<{ me: { id: string; email: string; role: Role } | null }>(ME_QUERY, {
     skip: !checkedStorage || !hasStoredToken || !authRequired,
     fetchPolicy: "network-only",
   });
@@ -119,13 +125,13 @@ export function AdminScreen() {
     if (!isLoggedIn) {
       return <LoginForm onLoggedIn={() => setHasStoredToken(true)} />;
     }
-    return <AdminDashboard email={meData?.me?.email} onLogout={handleLogout} />;
+    return <AdminDashboard email={meData?.me?.email} role={meData?.me?.role ?? "ADMIN"} onLogout={handleLogout} />;
   }
 
-  return <AdminDashboard />;
+  return <AdminDashboard role="ADMIN" />;
 }
 
-function AdminDashboard({ email, onLogout }: { email?: string; onLogout?: () => void }) {
+function AdminDashboard({ email, role, onLogout }: { email?: string; role: Role; onLogout?: () => void }) {
   const t = useTheme();
   const styles = useMemo(() => makeStyles(t), [t]);
   const [section, setSection] = useState<Section>("list");
@@ -147,10 +153,12 @@ function AdminDashboard({ email, onLogout }: { email?: string; onLogout?: () => 
             </Pressable>
           )}
         </View>
-        <Text style={styles.signedInAs}>{email ?? "Create shipments and update their status."}</Text>
+        <Text style={styles.signedInAs}>
+          {email ? `${email} · ${role === "ADMIN" ? "Admin" : "Driver"}` : "Create shipments and update their status."}
+        </Text>
 
         <View style={styles.segments}>
-          {SECTIONS.map(({ key, label }) => (
+          {SECTIONS.filter((s) => !s.adminOnly || role === "ADMIN").map(({ key, label }) => (
             <Pressable
               key={key}
               style={[styles.segment, section === key && styles.segmentActive]}
@@ -162,7 +170,9 @@ function AdminDashboard({ email, onLogout }: { email?: string; onLogout?: () => 
         </View>
       </View>
 
-      {section === "list" ? (
+      {section === "dashboard" ? (
+        <DashboardPanel onOpen={openForUpdate} />
+      ) : section === "list" ? (
         <ShipmentList onSelect={openForUpdate} />
       ) : (
         <ScrollView
@@ -170,7 +180,13 @@ function AdminDashboard({ email, onLogout }: { email?: string; onLogout?: () => 
           keyboardShouldPersistTaps="handled"
           automaticallyAdjustKeyboardInsets
         >
-          {section === "create" ? <CreateShipmentForm /> : <UpdateStatusForm initialTrackingId={selectedId} />}
+          {section === "create" ? (
+            <CreateShipmentForm />
+          ) : section === "import" ? (
+            <ImportPanel />
+          ) : (
+            <UpdateStatusForm initialTrackingId={selectedId} role={role} />
+          )}
         </ScrollView>
       )}
     </KeyboardAvoidingView>
@@ -390,13 +406,15 @@ function CreateShipmentForm() {
   );
 }
 
-function UpdateStatusForm({ initialTrackingId }: { initialTrackingId: string | null }) {
+function UpdateStatusForm({ initialTrackingId, role }: { initialTrackingId: string | null; role: Role }) {
   const t = useTheme();
   const styles = useMemo(() => makeStyles(t), [t]);
   const [trackingId, setTrackingId] = useState("");
   const [location, setLocation] = useState("");
   const [note, setNote] = useState("");
   const [chosen, setChosen] = useState<ShipmentStatus | null>(null);
+  const [deliveredTo, setDeliveredTo] = useState("");
+  const [otp, setOtp] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
 
   const [loadShipment, { data, loading: loadingShipment, error: loadError }] = useLazyQuery<{
@@ -446,6 +464,11 @@ function UpdateStatusForm({ initialTrackingId }: { initialTrackingId: string | n
       setFormError("Please say why (the reason is shown to anyone tracking this shipment).");
       return;
     }
+    const receivedBy = deliveredTo.trim();
+    if (nextStatus === "DELIVERED" && !receivedBy) {
+      setFormError("Enter the name of the person who received the shipment.");
+      return;
+    }
     setFormError(null);
     const result = await updateStatus({
       variables: {
@@ -454,6 +477,8 @@ function UpdateStatusForm({ initialTrackingId }: { initialTrackingId: string | n
           status: nextStatus,
           location: eventLocation,
           note: eventNote,
+          deliveredTo: nextStatus === "DELIVERED" ? receivedBy : null,
+          otp: nextStatus === "DELIVERED" ? otp.trim() || null : null,
         },
       },
       // Optimistic UI: assume the server accepts the move and write the
@@ -464,6 +489,7 @@ function UpdateStatusForm({ initialTrackingId }: { initialTrackingId: string | n
         updateStatus: {
           ...shipment,
           currentStatus: nextStatus,
+          deliveredTo: nextStatus === "DELIVERED" ? receivedBy : shipment.deliveredTo ?? null,
           allowedNextStatuses: [] as ShipmentStatus[], // the server's answer replaces this in a moment
           history: [
             ...shipment.history,
@@ -473,6 +499,7 @@ function UpdateStatusForm({ initialTrackingId }: { initialTrackingId: string | n
               location: eventLocation,
               note: eventNote,
               timestamp: new Date().toISOString(),
+              updatedBy: null,
             },
           ],
         },
@@ -486,6 +513,8 @@ function UpdateStatusForm({ initialTrackingId }: { initialTrackingId: string | n
       feedback.success(`Status updated to ${STATUS_LABELS[nextStatus]}`);
       setLocation("");
       setNote("");
+      setDeliveredTo("");
+      setOtp("");
       // Re-run the lookup so the chip row reflects the new current status.
       loadShipment({ variables: { trackingId: shipment.trackingId } });
     }
@@ -522,6 +551,12 @@ function UpdateStatusForm({ initialTrackingId }: { initialTrackingId: string | n
           <View style={styles.chipRow}>
             <StatusBadge status={shipment.currentStatus} />
           </View>
+          {shipment.deliveredTo ? <Text style={styles.signedInAs}>Delivered to {shipment.deliveredTo}.</Text> : null}
+          {role === "ADMIN" && shipment.deliveryOtp && shipment.currentStatus !== "DELIVERED" ? (
+            <Text style={[styles.signedInAs, { marginTop: 10, marginBottom: 0 }]} selectable>
+              Delivery code: {shipment.deliveryOtp} (the receiver gives this to the courier)
+            </Text>
+          ) : null}
 
           {options.length > 0 ? (
             <>
@@ -553,6 +588,27 @@ function UpdateStatusForm({ initialTrackingId }: { initialTrackingId: string | n
                 placeholder={shipment.destination}
               />
 
+              {nextStatus === "DELIVERED" && (
+                <>
+                  <Text style={styles.label}>Received by (required)</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={deliveredTo}
+                    onChangeText={setDeliveredTo}
+                    placeholder={shipment.receiverName}
+                  />
+                  <Text style={styles.label}>Delivery code</Text>
+                  <TextInput
+                    style={styles.input}
+                    keyboardType="number-pad"
+                    maxLength={4}
+                    value={otp}
+                    onChangeText={setOtp}
+                    placeholder="4 digits from the receiver"
+                  />
+                </>
+              )}
+
               <Text style={styles.label}>
                 {nextStatus && isExceptionStatus(nextStatus) ? "Reason (required)" : "Note (optional)"}
               </Text>
@@ -574,6 +630,10 @@ function UpdateStatusForm({ initialTrackingId }: { initialTrackingId: string | n
             <Text style={styles.spacingTop}>
               This shipment is {STATUS_LABELS[shipment.currentStatus].toLowerCase()} and can't be changed any more.
             </Text>
+          )}
+
+          {role === "ADMIN" && (
+            <EditShipmentPanel key={`${shipment.trackingId}-${shipment.edits?.length ?? 0}`} shipment={shipment} />
           )}
         </View>
       )}
