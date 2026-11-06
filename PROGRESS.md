@@ -1,58 +1,56 @@
 # Progress — Shipment Tracker
 
-## Phase 2 (PLAN.md "Phase 2") — built
+`PLAN.md` has the original design. `README.md` is the up-to-date description of what the app does, how to run it and why it is built this way. This file is only "what is built, what is verified, what is left".
 
-- **A (stylish):** theme/dark mode, Inter, icon badges, skeletons, animated timeline + progress bar, haptics + toasts.
-- **B (behaviour):** 30 s polling + "Updated" label, optimistic `updateStatus`, global session-expiry handling, deep links + share.
-- **C (admin list):** API `shipments` query (cursor pagination, status filter, prefix search, 2 new indexes, tests → **8/8 passing**) and the mobile list.
-- **D (offline):** persisted public-only cache, recent searches, offline banner.
-- Verified on web in Chrome (track, deep link, list, filter, row tap, session expiry, API-down cached render). **Not verified:** the offline banner, haptics, and anything on a physical Android device. **Still to do:** README GIF, deployment (Atlas/Render/Netlify/EAS).
-- Local dev DB now holds ~30 seeded demo shipments.
+## Built
 
+**API (`apps/api`)** — TypeScript, Express 5, Apollo Server 5, Mongoose 8, JWT.
+- Status state machine with exception states (delayed, on hold, failed attempt, returned, cancelled), atomic compare-and-swap updates, append-only history.
+- Roles (ADMIN / DRIVER) checked against the DB per request; field masking per role.
+- Proof of delivery (recipient name + 4-digit code), audit trail, edit with change log.
+- Dashboard stats, bulk status update, CSV import, cursor-paginated admin list.
+- Rate limits, query depth limit, structured JSON logs (pino), production error masking.
+- **37 tests** passing.
 
-Status as of this session. Full design spec, schema, and rationale live in `PLAN.md` — read that first if picking this back up cold. This file is just "what's actually built" vs. "what's left."
+**App (`apps/mobile`)** — Expo SDK 58, React Native, Apollo Client 4.
+- Track screen: timeline, progress, ETA wording, My shipments, Route link, share, deep links, offline cache, polling.
+- Admin: login gate, dashboard, create / edit / update, bulk select, CSV import, QR label printing, camera scanner.
+- Hindi / English (customer screens), accessibility pass, light/dark theme.
+- Types generated from the API schema (`npm run codegen`).
+- **47 tests** passing.
 
-## Done
+**CI:** generated-types check, typecheck of both apps, API tests, app tests.
 
-### Backend (`apps/api`) — functionally complete
-- TypeScript + Express 5 + Apollo Server 5 + Mongoose 8 + JWT, exactly per `PLAN.md`.
-- `domain/status.ts` — the status state machine (`canTransition`), framework-free.
-- `models/Shipment.ts`, `models/Admin.ts` — with the unique indexes from the plan.
-- `services/authService.ts` (bcrypt + JWT), `services/shipmentService.ts` (tracking-ID retry on collision, `updateStatus` as an atomic compare-and-swap so a race can't silently double-append history).
-- `errors.ts` (all 6 error codes + `requireAdmin`), `context.ts`, `schema.ts`, `resolvers/*`, `index.ts` (CORS, prod error masking, introspection off outside dev, `/healthz`).
-- `scripts/seedAdmin.ts` — upserts from `SEED_ADMIN_EMAIL`/`SEED_ADMIN_PASSWORD`.
-- **Tests: `npm test -w api` → 6/6 passing** (Jest + mongodb-memory-server). Covers the public query, auth-required create, legal + illegal transitions (asserting the illegal one leaves state untouched), and login's identical error for bad-password vs. unknown-email.
-- Manually verified over real HTTP against your local MongoDB service (`curl`): health check, unauthenticated rejection, login, create, status advance, illegal-transition rejection, public lookup — all correct.
+## Verified by hand
 
-### Mobile app (`apps/mobile`) — functionally complete
-- Expo SDK 58 + TypeScript, React Navigation (bottom tabs: Track / Admin), Apollo Client v4.
-- `apollo.ts` (authLink + errorLink), `auth/token.ts` (SecureStore, with a documented localStorage fallback on web).
-- `TrackScreen` (search, header card, timeline, pull-to-refresh, idle/loading/not-found/loaded states) and `AdminScreen` (login, create-shipment, update-status with a chip row that shows the whole status enum but only lets you tap the one legal next step).
-- `npx tsc --noEmit` clean.
-- **Manually driven in Chrome** (web build) against the live local API: full loop — track → log in → create shipment → advance status → confirmed Track tab updates automatically → log out. No console errors from the app.
+- API over real HTTP: locked mode, role checks, rate limit (429 on the 11th login attempt), log output.
+- App in Chrome (web): Track (including a delayed shipment), Hindi toggle and its persistence, Overview dashboard, Update + Edit, bulk select, CSV import, My shipments, Save / Route / Share, QR label modal.
 
-### Repo
-- npm workspaces monorepo, `.gitignore` correct (`.env`, `node_modules` both confirmed ignored).
-- 5 commits, each a logical unit (see `git log --oneline`). Nothing uncommitted.
+## Not verified
 
-## One real bug found and fixed along the way
-Mongoose 9.x (the current "latest") bundles a driver incompatible with the `mongodb-memory-server` test binary — handshake failed with `Missing required sub-document 'driver'`. Downgraded to **mongoose 8.24.8** (the plan's original target anyway) and tests went from hanging/failing to passing in ~4s. Worth remembering if you ever bump mongoose later.
+- The QR **scanner** (needs a camera), the browser **print dialog**, haptics, and the offline banner.
+- Anything on a physical phone or in an EAS-built APK.
+- Staff login in the UI against a seeded Atlas database, and the DRIVER view in the app (the DRIVER rules are covered by API tests).
+- The Admin screens in Hindi (not translated).
 
-## Not started yet
+## Left out on purpose
 
-1. ~~README.md~~ — written (setup, env tables, tests, design decisions, limitations). Still has TODO placeholders for live URL, APK link, and GIF/screenshots.
-2. **Screenshots + demo GIF** for the README — none saved into `docs/screenshots/` yet.
-3. `apps/mobile/eas.json` added (APK preview profile); its `EXPO_PUBLIC_API_URL` is a placeholder to replace with the Render URL.
-4. **Deployment** — Atlas cluster, Render web service, Netlify web build, EAS APK build. All need your accounts/credentials, so this has to be driven by you or done together live; I documented the exact steps + env vars in `PLAN.md` §7 already.
-4. The optional 6th test (pure unit test over the full 5×5 `canTransition` matrix) — already written, actually, it's test #6 in the suite. So this one's done too, just noting it in case the count looks off against the plan's "4-5 tests."
+Push notifications, GraphQL subscriptions, Sentry, photo proof of delivery, an in-app map. See "Known limitations" in the README for why and what each would need.
+
+## Left to do (needs your accounts)
+
+1. Seed Atlas: `npm run seed -w api` with `MONGODB_URI`, `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD` (optionally `SEED_DRIVER_*`). Existing shipments need no migration.
+2. Render: redeploy the API; make sure `JWT_SECRET` is set. `REQUIRE_ADMIN` defaults to `true`, so staff will have to log in.
+3. Netlify: redeploy the web build with `EXPO_PUBLIC_API_URL`; put its origin in the API's `CORS_ORIGIN`.
+4. EAS: build the APK and attach it to a GitHub Release.
+5. README: fill in the live URL, APK link and a demo GIF.
 
 ## To pick this back up
 
 ```bash
-cd apps/api && npm run dev     # needs .env — see .env.example; local MongoDB service is already running on this machine
-cd apps/mobile && npm start    # needs .env — see .env.example (EXPO_PUBLIC_API_URL)
+npm install
+cp apps/api/.env.example apps/api/.env       # edit values
+cd apps/api && npm run dev                   # http://localhost:4000/graphql
+cd apps/mobile && npx expo start             # press w for web
+npm run codegen                              # after changing apps/api/src/schema.ts
 ```
-
-Local `.env` files already exist on disk from this session (gitignored, not committed) pointing at `localhost:27017` / `localhost:4000` — they should still work as-is.
-
-Next session: start with the README (I have everything needed to write it — design decisions, env vars, and test output are all already known from this session), then screenshots, then deployment whenever you're ready to drive the account-creation parts.

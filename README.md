@@ -1,6 +1,6 @@
 # Shipment Tracker
 
-A courier-tracking app (think Delhivery / Blue Dart): anyone can look up a parcel by tracking ID and see its timeline; admins log in to create shipments and advance their status (login can be switched off with `REQUIRE_ADMIN=false` for an open demo). Built as a full-stack TypeScript monorepo — **GraphQL API + React Native (Expo) app** that runs on Android, iOS and web.
+A courier-tracking app (think Delhivery / Blue Dart): anyone can look up a parcel by tracking ID and see its timeline; staff log in to create, edit and advance shipments (admins can do everything, drivers can only update status). Login can be switched off with `REQUIRE_ADMIN=false` for an open demo. Built as a full-stack TypeScript monorepo — **GraphQL API + React Native (Expo) app** that runs on Android, iOS and web.
 
 > **Live demo:** _TODO — add Netlify URL after deploy_ · **Android APK:** _TODO — add GitHub Release link_
 > The API runs on a free Render instance and sleeps when idle — the first request can take 30–50 s to wake it.
@@ -18,7 +18,8 @@ _Demo GIF: TODO._
 | API | Node, Express 5, Apollo Server 5, GraphQL, Mongoose 8, MongoDB |
 | Auth | JWT (HS256, 8h) + bcrypt |
 | App | Expo (React Native), TypeScript, Apollo Client 4, React Navigation (bottom tabs), Reanimated |
-| Tests | Jest, ts-jest, mongodb-memory-server |
+| Tests | API: Jest, ts-jest, mongodb-memory-server. App: jest-expo, Testing Library |
+| Tooling | pino (structured logs), graphql-codegen (app types generated from the API schema), GitHub Actions CI |
 | Deploy | MongoDB Atlas, Render (API), Netlify (web), EAS (APK) |
 
 ## Features
@@ -29,8 +30,19 @@ _Demo GIF: TODO._
 - **Abuse protection:** per-IP rate limit on `/graphql` (300 / 15 min) and a much tighter one on `login` (10 / 15 min), plus a query depth limit.
 - **Status state machine:** a main path `CREATED → PICKED_UP → IN_TRANSIT → OUT_FOR_DELIVERY → DELIVERED`, one step at a time, plus exceptions: `DELAYED`, `ON_HOLD`, `DELIVERY_ATTEMPT_FAILED`, `RETURNED`, `CANCELLED`. Each exception needs a written reason (shown on the Track screen). `DELAYED`/`ON_HOLD` resume where the parcel left off, a failed attempt can be retried, `DELIVERED`/`RETURNED`/`CANCELLED` are final. Illegal moves are rejected with `INVALID_STATUS_TRANSITION`. The API exposes `allowedNextStatuses` on each shipment, so the app never duplicates the rules.
 - Status history is append-only.
+- **Roles:** `ADMIN` (everything) and `DRIVER` (look up shipments and update status; nothing else). Checked against the database on every request, so removing a user takes effect immediately. Fields are masked per role: the receiver's phone, the delivery code and the audit trail are never sent to people who shouldn't see them.
+- **Proof of delivery:** marking a parcel `DELIVERED` needs the name of who received it, and, when login is required, the receiver's 4-digit **delivery code** (shown to admins, read out by the receiver at the door). A photo upload would need file storage, so a name and a code stand in for it.
+- **Edit and audit trail:** admins can correct a shipment's details; every change is logged with who, when and old value to new value. Each status event also records who made it.
+- **Dashboard:** counts by status, shipments created per day, and the ones that need attention (delayed, on hold, failed attempt, or past their estimate).
+- **Bulk update:** select up to 50 shipments and move them to the same status in one go; each is checked individually and the result lists what failed and why.
+- **CSV import:** paste or upload a CSV (up to 200 rows). Good rows are created, bad rows are reported with their line number.
+- **QR labels and scanner:** print a shipping label with a QR code of the tracking link; staff can scan it with the phone camera (native only) to load the shipment.
 
 **App**
+- **My shipments:** save tracking IDs on the device; the Track screen lists them with live status.
+- **Route** button opens Google Maps directions from origin to destination (a link, so no maps API key).
+- **Hindi and English:** toggle on the Track screen, remembers the choice and follows the device language by default. The customer screens are translated; the staff screens are English only.
+- **Accessibility:** labelled inputs, button roles and states, announced errors, a progress bar that reports a percentage, text labels on every status (never colour alone).
 - Animated timeline (staggered slide-in), progress bar, skeleton loaders, icon status badges, Inter font.
 - Light / dark mode that follows the device (one theme object, no colours in components).
 - Haptics and toasts on track / create / update.
@@ -50,7 +62,11 @@ apps/
     src/resolvers/  thin GraphQL adapters
     src/models/     Mongoose schemas
     src/__tests__/  resolver tests via ApolloServer.executeOperation
+    schema.graphql  generated SDL (npm run codegen)
   mobile/   Expo app (Track + Admin tabs)
+    src/i18n/       English + Hindi message catalogs
+    src/generated/  types generated from the API schema (do not edit)
+codegen.ts  graphql-codegen config
 ```
 
 Request path: Express → Apollo → `context` verifies the JWT → resolver calls `requireAdmin` → service applies rules → Mongoose → typed result.
@@ -88,7 +104,9 @@ On a physical phone, `localhost` is the phone itself — set `EXPO_PUBLIC_API_UR
 | `REQUIRE_ADMIN` | default `true`. `false` = open demo mode, no login needed for admin operations |
 | `RATE_LIMIT_MAX` / `LOGIN_RATE_LIMIT_MAX` | per-IP requests per 15 min on `/graphql` (default 300) and login attempts (default 10) |
 | `CORS_ORIGIN` | comma-separated allowed browser origins (needed for the web build) |
+| `LOG_LEVEL` | `fatal` / `error` / `warn` / `info` (default) / `debug` / `silent` |
 | `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` | only read by `npm run seed` |
+| `SEED_DRIVER_EMAIL` / `SEED_DRIVER_PASSWORD` | optional; `npm run seed` also creates a driver account |
 
 **App (`apps/mobile/.env`)**
 
@@ -100,26 +118,24 @@ On a physical phone, `localhost` is the phone itself — set `EXPO_PUBLIC_API_UR
 ## Tests
 
 ```bash
-npm test -w api
+npm test -w api      # 37 tests
+npm test -w mobile   # 47 tests
 ```
 
-Twenty-two tests run through `ApolloServer.executeOperation` against an in-memory MongoDB, so schema, context and error formatting are all exercised:
+**API (37)** run through `ApolloServer.executeOperation` against an in-memory MongoDB, so schema, context and error formatting are all exercised. They cover:
 
-1. Public `shipment` query returns full history, and `null` for an unknown ID.
-2. `createShipment` creates a correct initial state.
-3. `updateStatus` advances legally and appends to history.
-4. `updateStatus` rejects an illegal transition **and leaves the document unchanged**.
-5. `login` succeeds, and fails with an identical error for wrong password vs. unknown email.
-6. In open mode the admin list needs no login.
-7. The admin list pages through every shipment exactly once (including rows that share a `createdAt`), newest first, and honours the status filter, tracking-ID search and rejects a bad cursor.
-8. `canTransition` over the full 5×5 matrix (pure unit test).
-9. Locked mode (`REQUIRE_ADMIN=true`): `authRequired` is reported, list/create/update reject anonymous callers without changing data, public tracking stays open, a logged-in admin still works.
-10. The query depth limit.
-11. Shipment details: stored, phone masked for anonymous viewers, invalid ETD/phone/weight rejected, old shipments still load.
-12. Exception rules (pure): terminal states have no exit, nothing moves to itself, resume targets, where cancel/return/failed-attempt are reachable.
-13. Exceptions through the API: a reason is required, delay then resume then deliver, failed attempt then retry then return, cancel before pickup.
+- Public lookup (full history, `null` for an unknown ID) and the `createShipment` initial state.
+- Status updates: legal moves append to history; an illegal move is rejected **and leaves the document unchanged**; `canTransition` is checked over the whole matrix, including the exception rules (reason required, resume targets, terminal states).
+- Auth: login succeeds, and fails with an identical error for a wrong password and an unknown email; locked mode rejects anonymous callers without changing data; open mode needs no login.
+- The admin list: pages through every shipment exactly once (even rows sharing a `createdAt`), status filter, tracking-ID search, bad cursor rejected.
+- Shipment details: stored, phone masked for the public, bad ETA/phone/weight rejected, old shipments still load.
+- Roles: a driver can update status but not create, edit, import or view the dashboard; the delivery code is admin-only; a deleted account loses access at once even with a valid token.
+- Proof of delivery (recipient name, right code, wrong attempt changes nothing), the audit trail, `editShipment` (partial changes, clearing fields, no-op edits not logged), `dashboardStats`, `bulkUpdateStatus` (50 max, duplicates ignored, per-row results), `importShipments` (per-row errors, 200 max).
+- The query depth limit. (The per-IP rate limits sit in Express, outside Apollo, so they are not in the automated suite; I checked them by hand against a running server, where the 11th login attempt returned 429.)
 
-The first run downloads a MongoDB binary, so it can be slow on a cold machine.
+**App (47)** run with jest-expo and Testing Library: ETA wording, progress, CSV parsing (quotes, BOM, bad rows by line number), QR generation, scan-text parsing, the saved list, bulk-selection logic, the main components, and the i18n catalogs (same keys and `{placeholders}` in both languages, switching language re-renders, the choice is remembered).
+
+The first API run downloads a MongoDB binary, so it can be slow on a cold machine. CI runs both suites, both typechecks, and fails if the generated GraphQL types are out of date.
 
 ## Design decisions
 
@@ -140,21 +156,26 @@ The first run downloads a MongoDB binary, so it can be slow on a cold machine.
 - **Cache persistence excludes admin data.** The on-device cache is a custom ~60-line save/restore (the off-the-shelf `apollo3-cache-persist` targets Apollo 3 and can't filter). Before saving, the admin list and profile are evicted and the cache garbage-collected, so only what the public Track screen showed is written to disk. It's also wiped on logout.
 - **One theme object.** Light and dark palettes share the same keys; components call `useTheme()` and never contain a hex literal.
 - **Mongoose pinned to 8.x.** Mongoose 9's bundled driver failed its handshake against the `mongodb-memory-server` binary; 8.x works.
+- **App types come from the API schema.** `npm run codegen` exports the schema and generates TypeScript types; the app's status/package/role lists are checked against them at compile time, so adding a status in the API breaks the app's typecheck until it is handled. CI fails if the generated files are stale.
+- **The delivery code is a real gate, but only when login is on.** It is generated with `crypto.randomInt`, only ever sent to admins, and checked before the status change is applied (the change itself is still the atomic compare-and-swap). Only staff can attempt it, and the general rate limit applies, so guessing is slow and limited to people who already have a staff login, but a per-shipment attempt counter would be the proper fix. In open demo mode there is nobody to hand it to, so it is not enforced.
+- **Translations are typed.** English is the source of truth; Hindi is a full `Record` of the same keys, so a missing translation is a compile error rather than a blank string at runtime.
+- **Logs never contain request bodies.** One JSON line per request (method, path, status, ms, IP, operation name). Variables carry passwords and delivery codes, so they are not logged, and the logger also redacts known secret fields as a second line of defence.
 - **Deliberately not used:** Redux/Zustand (Apollo cache + local state is enough), a UI kit, form libraries, `type-graphql`, DataLoader (`history` is embedded, so no N+1).
 
 ## Known limitations / what I'd do next
 
-- Single seeded admin; no signup, password reset or roles.
-- Atlas free tier with a `0.0.0.0/0` allowlist (Render's free tier has no static IP) — the real fix is private networking on a paid tier.
+- **Left out on purpose:** push notifications (needs Firebase/APNs credentials and a device-token store), GraphQL subscriptions (polling every 30 s is enough at this scale and works on a free API tier), Sentry (needs an account and DSN), photo proof of delivery (needs file storage; a name plus delivery code stands in), an in-app map (the Route button opens Google Maps instead).
+- Staff screens are English only; only what customers see is translated.
+- The QR scanner needs a real camera, and printing a label opens the browser's print dialog on web. Neither is covered by automated tests; the scanner's text parsing is.
+- Atlas free tier with a `0.0.0.0/0` allowlist (Render's free tier has no static IP): the real fix is private networking on a paid tier.
 - JWT in `localStorage` on web; an httpOnly cookie would be better there but doesn't suit a shared native client.
-- Polling interval is fixed; the API would need subscriptions for true push.
 - The offline banner and haptics are only verified on web/emulated paths so far; check on a physical device.
-- Next: GraphQL subscriptions for live status, graphql-codegen for shared types, structured logging.
-- CI (`.github/workflows/ci.yml`) typechecks both apps and runs the API tests on every push.
+- No user signup or password reset: staff accounts come from `npm run seed`.
+- CI (`.github/workflows/ci.yml`) checks the generated types are current, typechecks both apps, and runs the API and app tests on every push.
 
 ## Deployment (summary)
 
-1. **Atlas:** M0 cluster (Mumbai), user scoped to `shipment_tracker`, network access `0.0.0.0/0`. Run the seed against it.
-2. **Render:** root dir `apps/api`, build `npm install && npm run build`, start `node dist/index.js`, health check `/healthz`, env vars as above.
+1. **Atlas:** M0 cluster (Mumbai), user scoped to `shipment_tracker`, network access `0.0.0.0/0`. Run the seed against it (`SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD`, optionally `SEED_DRIVER_*`): `npm run seed -w api` with `MONGODB_URI` pointing at Atlas. Existing shipments need no migration; every new field is optional.
+2. **Render:** root dir `apps/api`, build `npm install && npm run build`, start `node dist/index.js`, health check `/healthz`, env vars as above. `REQUIRE_ADMIN` defaults to `true`, so the live site asks staff to log in; set `REQUIRE_ADMIN=false` only for an open demo. Set a long random `JWT_SECRET`.
 3. **Netlify:** base `apps/mobile`, build `npx expo export --platform web`, publish `apps/mobile/dist`, set `EXPO_PUBLIC_API_URL`; add the site origin to the API's `CORS_ORIGIN`.
 4. **APK:** `cd apps/mobile && eas build -p android --profile preview` (the profile sets `buildType: "apk"` so it can be sideloaded). Attach to a GitHub Release.
