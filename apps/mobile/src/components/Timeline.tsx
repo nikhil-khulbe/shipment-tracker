@@ -2,13 +2,14 @@ import { StyleSheet, View } from "react-native";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import type { StatusEvent } from "../types";
-import { STATUS_ICONS } from "../theme/status";
+import { dateLocale, useLang, type Lang } from "../i18n";
+import { STATUS_ICONS, statusLabel } from "../theme/status";
 import { useTheme } from "../theme/theme";
 import { StatusBadge } from "./StatusBadge";
 import { Text } from "./ui";
 
-function formatTimestamp(iso: string): string {
-  return new Date(iso).toLocaleString(undefined, {
+function formatTimestamp(iso: string, lang: Lang): string {
+  return new Date(iso).toLocaleString(dateLocale(lang), {
     day: "numeric",
     month: "short",
     hour: "numeric",
@@ -27,6 +28,7 @@ function formatTimestamp(iso: string): string {
  */
 export function Timeline({ events }: { events: StatusEvent[] }) {
   const t = useTheme();
+  const lang = useLang();
   const newestFirst = [...events].reverse();
 
   return (
@@ -39,8 +41,12 @@ export function Timeline({ events }: { events: StatusEvent[] }) {
             key={`${event.status}-${event.timestamp}`}
             entering={FadeInDown.delay(index * 80).springify()}
             style={styles.row}
+            accessible
+            accessibilityLabel={[statusLabel(event.status, lang), event.location, event.note, formatTimestamp(event.timestamp, lang)]
+              .filter(Boolean)
+              .join(", ")}
           >
-            <View style={styles.rail}>
+            <View style={styles.rail} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
               <View style={[styles.node, { backgroundColor: color }]}>
                 <Ionicons name={STATUS_ICONS[event.status]} size={13} color={t.bg} />
               </View>
@@ -51,7 +57,7 @@ export function Timeline({ events }: { events: StatusEvent[] }) {
               <StatusBadge status={event.status} />
               <Text style={styles.location}>{event.location}</Text>
               {event.note ? <Text style={[styles.note, { color: t.textMuted }]}>{event.note}</Text> : null}
-              <Text style={[styles.timestamp, { color: t.textFaint }]}>{formatTimestamp(event.timestamp)}</Text>
+              <Text style={[styles.timestamp, { color: t.textFaint }]}>{formatTimestamp(event.timestamp, lang)}</Text>
             </View>
           </Animated.View>
         );

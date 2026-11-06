@@ -3,6 +3,7 @@ import Animated, { SlideInUp, SlideOutUp } from "react-native-reanimated";
 import { useNetInfo } from "@react-native-community/netinfo";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useT } from "../i18n";
 import { useTheme } from "../theme/theme";
 import { Text } from "./ui";
 
@@ -13,6 +14,7 @@ import { Text } from "./ui";
  */
 export function OfflineBanner() {
   const t = useTheme();
+  const tr = useT();
   const insets = useSafeAreaInsets();
   const { isConnected } = useNetInfo();
   if (isConnected !== false) return null;
@@ -25,7 +27,7 @@ export function OfflineBanner() {
       accessibilityRole="alert"
     >
       <Ionicons name="cloud-offline-outline" size={16} color="#1f2937" />
-      <Text style={styles.text}>You're offline — showing saved data</Text>
+      <Text style={styles.text}>{tr("offline.banner")}</Text>
     </Animated.View>
   );
 }

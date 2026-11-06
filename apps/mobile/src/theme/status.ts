@@ -1,5 +1,6 @@
 import type { ComponentProps } from "react";
 import type Ionicons from "@expo/vector-icons/Ionicons";
+import { translate, type Lang } from "../i18n";
 import { isExceptionStatus, REGULAR_STATUSES, type Shipment, type ShipmentStatus } from "../types";
 
 export const STATUS_LABELS: Record<ShipmentStatus, string> = {
@@ -14,6 +15,11 @@ export const STATUS_LABELS: Record<ShipmentStatus, string> = {
   RETURNED: "Returned",
   CANCELLED: "Cancelled",
 };
+
+/** The status name in the given language. (STATUS_LABELS above stays English: the staff screens aren't translated.) */
+export function statusLabel(status: ShipmentStatus, lang?: Lang): string {
+  return translate(`status.${status}`, undefined, lang);
+}
 
 export const STATUS_ICONS: Record<ShipmentStatus, ComponentProps<typeof Ionicons>["name"]> = {
   CREATED: "cube-outline",

@@ -129,15 +129,15 @@ export function EditShipmentPanel({ shipment }: { shipment: Shipment }) {
       {open && !isFinal && (
         <View>
           <Text style={s.label}>Origin</Text>
-          <TextInput style={s.input} value={origin} onChangeText={setOrigin} />
+          <TextInput accessibilityLabel="Origin" style={s.input} value={origin} onChangeText={setOrigin} />
           <Text style={s.label}>Destination</Text>
-          <TextInput style={s.input} value={destination} onChangeText={setDestination} />
+          <TextInput accessibilityLabel="Destination" style={s.input} value={destination} onChangeText={setDestination} />
           <Text style={s.label}>Receiver name</Text>
-          <TextInput style={s.input} value={receiverName} onChangeText={setReceiverName} />
+          <TextInput accessibilityLabel="Receiver name" style={s.input} value={receiverName} onChangeText={setReceiverName} />
           <Text style={s.label}>Receiver phone</Text>
-          <TextInput style={s.input} keyboardType="phone-pad" value={receiverPhone} onChangeText={setReceiverPhone} />
+          <TextInput accessibilityLabel="Receiver phone" style={s.input} keyboardType="phone-pad" value={receiverPhone} onChangeText={setReceiverPhone} />
           <Text style={s.label}>Sender name</Text>
-          <TextInput style={s.input} value={senderName} onChangeText={setSenderName} />
+          <TextInput accessibilityLabel="Sender name" style={s.input} value={senderName} onChangeText={setSenderName} />
 
           <Text style={s.label}>Package type</Text>
           <View style={s.chipRow}>
@@ -158,9 +158,9 @@ export function EditShipmentPanel({ shipment }: { shipment: Shipment }) {
           </View>
 
           <Text style={s.label}>Weight in kg</Text>
-          <TextInput style={s.input} keyboardType="decimal-pad" value={weight} onChangeText={setWeight} />
+          <TextInput accessibilityLabel="Weight in kg" style={s.input} keyboardType="decimal-pad" value={weight} onChangeText={setWeight} />
           <Text style={s.label}>Description</Text>
-          <TextInput style={s.input} value={description} onChangeText={setDescription} />
+          <TextInput accessibilityLabel="Description" style={s.input} value={description} onChangeText={setDescription} />
 
           <Text style={s.label}>
             Delivery date{shipment.estimatedDelivery ? ` (now ${new Date(shipment.estimatedDelivery).toLocaleDateString()})` : ""}

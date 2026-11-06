@@ -24,6 +24,7 @@ import { feedback } from "../feedback";
 import { useRecentSearches } from "../recentSearches";
 import { useSavedShipments } from "../savedShipments";
 import { SavedShipments } from "../components/SavedShipments";
+import { setLang, useLang, useT } from "../i18n";
 import { buildShareUrl } from "../links";
 import type { RootTabParamList } from "../navigation";
 import { useTheme, type Theme } from "../theme/theme";
@@ -33,6 +34,7 @@ const POLL_INTERVAL_MS = 30_000;
 
 /** "Updated just now" / "Updated 42s ago" / "Updated 3m ago". Re-renders itself every 10s. */
 function useUpdatedLabel(updatedAt: number | null): string | null {
+  const tr = useT();
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 10_000);
@@ -40,13 +42,15 @@ function useUpdatedLabel(updatedAt: number | null): string | null {
   }, []);
   if (updatedAt === null) return null;
   const seconds = Math.max(0, Math.round((now - updatedAt) / 1000));
-  if (seconds < 10) return "Updated just now";
-  if (seconds < 60) return `Updated ${seconds}s ago`;
-  return `Updated ${Math.floor(seconds / 60)}m ago`;
+  if (seconds < 10) return tr("track.updatedNow");
+  if (seconds < 60) return tr("track.updatedSeconds", { n: seconds });
+  return tr("track.updatedMinutes", { n: Math.floor(seconds / 60) });
 }
 
 export function TrackScreen() {
   const t = useTheme();
+  const tr = useT();
+  const lang = useLang();
   const styles = useMemo(() => makeStyles(t), [t]);
   const navigation = useNavigation();
   const route = useRoute<RouteProp<RootTabParamList, "Track">>();
@@ -141,11 +145,11 @@ export function TrackScreen() {
   async function handleShare() {
     if (!shipment) return;
     const url = buildShareUrl(shipment.trackingId);
-    const message = `Track shipment ${shipment.trackingId}: ${url}`;
+    const message = tr("track.shareMessage", { id: shipment.trackingId, url });
     if (Platform.OS === "web" && typeof navigator !== "undefined" && !navigator.share) {
       // Desktop browsers have no share sheet — copy the link instead.
       await navigator.clipboard?.writeText(url);
-      feedback.success("Tracking link copied");
+      feedback.success(tr("track.linkCopied"));
       return;
     }
     await Share.share(Platform.OS === "ios" ? { message, url } : { message }).catch(() => {});
@@ -157,7 +161,7 @@ export function TrackScreen() {
     const url =
       "https://www.google.com/maps/dir/?api=1" +
       `&origin=${encodeURIComponent(shipment.origin)}&destination=${encodeURIComponent(shipment.destination)}`;
-    Linking.openURL(url).catch(() => feedback.error("Couldn't open maps"));
+    Linking.openURL(url).catch(() => feedback.error(tr("track.mapsError")));
   }
 
   const updatedLabel = useUpdatedLabel(updatedAt);
@@ -170,13 +174,28 @@ export function TrackScreen() {
         keyboardShouldPersistTaps="handled"
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
       >
-        <Text style={styles.title}>Track a shipment</Text>
-        <Text style={styles.subtitle}>Enter the tracking ID from your receipt.</Text>
+        <View style={styles.titleRow}>
+          <Text style={styles.title} accessibilityRole="header">
+            {tr("track.title")}
+          </Text>
+          <Pressable
+            style={styles.langButton}
+            onPress={() => setLang(lang === "en" ? "hi" : "en")}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={tr("lang.switchLabel")}
+          >
+            <Ionicons name="language-outline" size={16} color={t.text} />
+            <Text style={styles.langText}>{tr("lang.switchTo")}</Text>
+          </Pressable>
+        </View>
+        <Text style={styles.subtitle}>{tr("track.subtitle")}</Text>
 
         <View style={styles.searchRow}>
           <TextInput
             style={styles.input}
-            placeholder="e.g. SHP-7K2M9QXZ"
+            placeholder={tr("track.placeholder")}
+            accessibilityLabel={tr("track.inputLabel")}
             autoCapitalize="characters"
             autoCorrect={false}
             value={input}
@@ -184,15 +203,22 @@ export function TrackScreen() {
             onSubmitEditing={() => search(input)}
             returnKeyType="search"
           />
-          <Pressable style={styles.button} onPress={() => search(input)}>
-            <Text style={styles.buttonText}>Track</Text>
+          <Pressable style={styles.button} onPress={() => search(input)} accessibilityRole="button">
+            <Text style={styles.buttonText}>{tr("track.button")}</Text>
           </Pressable>
         </View>
 
         {recent.length > 0 && (
           <View style={styles.recentRow}>
             {recent.map((id) => (
-              <Pressable key={id} style={styles.recentChip} onPress={() => search(id)}>
+              <Pressable
+                key={id}
+                style={styles.recentChip}
+                onPress={() => search(id)}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={tr("track.searchAgain", { id })}
+              >
                 <Ionicons name="time-outline" size={13} color={t.textMuted} />
                 <Text style={styles.recentText}>{id}</Text>
               </Pressable>
@@ -205,11 +231,15 @@ export function TrackScreen() {
         {isInitialLoad && !shipment && <ShipmentSkeleton />}
 
         {!isInitialLoad && error && !shipment && (
-          <Text style={styles.error}>Something went wrong reaching the server. Pull down to retry.</Text>
+          <Text style={styles.error} accessibilityRole="alert">
+            {tr("track.error")}
+          </Text>
         )}
 
         {!isInitialLoad && hasSearched && !error && !shipment && data !== undefined && (
-          <Text style={styles.empty}>No shipment found for that tracking ID.</Text>
+          <Text style={styles.empty} accessibilityRole="alert">
+            {tr("track.notFound")}
+          </Text>
         )}
 
         {shipment && (
@@ -223,18 +253,30 @@ export function TrackScreen() {
                   hitSlop={8}
                   accessibilityRole="button"
                   accessibilityState={{ selected: isSaved(shipment.trackingId) }}
-                  accessibilityLabel={isSaved(shipment.trackingId) ? "Remove from my shipments" : "Save to my shipments"}
+                  accessibilityLabel={isSaved(shipment.trackingId) ? tr("track.unsaveLabel") : tr("track.saveLabel")}
                 >
                   <Ionicons name={isSaved(shipment.trackingId) ? "bookmark" : "bookmark-outline"} size={16} color={t.text} />
-                  <Text style={styles.shareText}>{isSaved(shipment.trackingId) ? "Saved" : "Save"}</Text>
+                  <Text style={styles.shareText}>{isSaved(shipment.trackingId) ? tr("track.saved") : tr("track.save")}</Text>
                 </Pressable>
-                <Pressable style={styles.shareButton} onPress={handleRoute} hitSlop={8} accessibilityRole="link">
+                <Pressable
+                  style={styles.shareButton}
+                  onPress={handleRoute}
+                  hitSlop={8}
+                  accessibilityRole="link"
+                  accessibilityLabel={tr("track.routeLabel")}
+                >
                   <Ionicons name="map-outline" size={16} color={t.text} />
-                  <Text style={styles.shareText}>Route</Text>
+                  <Text style={styles.shareText}>{tr("track.route")}</Text>
                 </Pressable>
-                <Pressable style={styles.shareButton} onPress={handleShare} hitSlop={8} accessibilityRole="button">
+                <Pressable
+                  style={styles.shareButton}
+                  onPress={handleShare}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel={tr("track.shareLabel")}
+                >
                   <Ionicons name="share-outline" size={16} color={t.text} />
-                  <Text style={styles.shareText}>Share</Text>
+                  <Text style={styles.shareText}>{tr("track.share")}</Text>
                 </Pressable>
               </View>
             </View>
@@ -251,7 +293,18 @@ const makeStyles = (t: Theme) =>
   StyleSheet.create({
     flex: { flex: 1, backgroundColor: t.bg },
     content: { padding: 20, paddingBottom: 120 },
-    title: { fontSize: 24, fontWeight: "700" },
+    titleRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
+    title: { fontSize: 24, fontWeight: "700", flexShrink: 1 },
+    langButton: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      minHeight: 36,
+      paddingHorizontal: 12,
+      borderRadius: 999,
+      backgroundColor: t.surfaceAlt,
+    },
+    langText: { fontSize: 13, fontWeight: "600" },
     subtitle: { fontSize: 14, color: t.textMuted, marginTop: 4, marginBottom: 20 },
     searchRow: { flexDirection: "row", gap: 10, marginBottom: 14 },
     recentRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 20 },

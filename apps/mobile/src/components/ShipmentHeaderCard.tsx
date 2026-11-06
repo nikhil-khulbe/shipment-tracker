@@ -1,34 +1,31 @@
 import { StyleSheet, View } from "react-native";
 import type { Shipment } from "../types";
 import { describeEta } from "../eta";
+import { useT, useLang } from "../i18n";
 import { shipmentProgress } from "../theme/status";
 import { useTheme } from "../theme/theme";
 import { ProgressBar } from "./ProgressBar";
 import { StatusBadge } from "./StatusBadge";
 import { Text } from "./ui";
 
-const PACKAGE_LABELS = {
-  DOCUMENT: "Document",
-  PARCEL: "Parcel",
-  FRAGILE: "Fragile",
-  ELECTRONICS: "Electronics",
-  OTHER: "Other",
-} as const;
-
 export function ShipmentHeaderCard({ shipment }: { shipment: Shipment }) {
   const t = useTheme();
-  const eta = describeEta(shipment);
+  const tr = useT();
+  const lang = useLang();
+  const eta = describeEta(shipment, new Date(), lang);
 
   // Only list details that exist: older shipments have none of these.
   const details: string[] = [];
-  if (shipment.packageType) details.push(PACKAGE_LABELS[shipment.packageType]);
-  if (shipment.weightKg != null) details.push(`${shipment.weightKg} kg`);
-  if (shipment.senderName) details.push(`From ${shipment.senderName}`);
+  if (shipment.packageType) details.push(tr(`package.${shipment.packageType}`));
+  if (shipment.weightKg != null) details.push(tr("header.weight", { kg: shipment.weightKg }));
+  if (shipment.senderName) details.push(tr("header.from", { name: shipment.senderName }));
 
   return (
     <View style={[styles.card, { backgroundColor: t.surface }]}>
       <View style={styles.topRow}>
-        <Text style={styles.trackingId}>{shipment.trackingId}</Text>
+        <Text style={styles.trackingId} accessibilityRole="header">
+          {shipment.trackingId}
+        </Text>
         <StatusBadge status={shipment.currentStatus} />
       </View>
 
@@ -47,7 +44,7 @@ export function ShipmentHeaderCard({ shipment }: { shipment: Shipment }) {
       )}
 
       <Text style={[styles.receiver, { color: t.textMuted }]}>
-        Receiver: {shipment.receiverName}
+        {tr("header.receiver", { name: shipment.receiverName })}
         {shipment.receiverPhone ? `  ·  ${shipment.receiverPhone}` : ""}
       </Text>
 
@@ -61,6 +58,7 @@ export function ShipmentHeaderCard({ shipment }: { shipment: Shipment }) {
       ) : null}
 
       <ProgressBar
+        label={tr("header.progress")}
         progress={shipmentProgress(shipment)}
         color={t.status[shipment.currentStatus]}
       />

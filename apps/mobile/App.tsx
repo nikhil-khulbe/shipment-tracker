@@ -20,6 +20,7 @@ import { AdminScreen } from "./src/screens/AdminScreen";
 import { AppToast } from "./src/components/AppToast";
 import { OfflineBanner } from "./src/components/OfflineBanner";
 import { restoreCache } from "./src/cachePersist";
+import { loadLang, useT } from "./src/i18n";
 import { linking } from "./src/links";
 import { font } from "./src/theme/fonts";
 import { useTheme } from "./src/theme/theme";
@@ -28,6 +29,7 @@ const Tab = createBottomTabNavigator();
 
 function Root() {
   const t = useTheme();
+  const tr = useT();
   const base = t.dark ? DarkTheme : DefaultTheme;
   const navTheme = {
     ...base,
@@ -53,6 +55,7 @@ function Root() {
           name="Track"
           component={TrackScreen}
           options={{
+            title: tr("tab.track"),
             tabBarIcon: ({ color, size }) => <Ionicons name="search" color={color} size={size} />,
           }}
         />
@@ -60,6 +63,7 @@ function Root() {
           name="Admin"
           component={AdminScreen}
           options={{
+            title: tr("tab.admin"),
             tabBarIcon: ({ color, size }) => <Ionicons name="shield-checkmark" color={color} size={size} />,
           }}
         />
@@ -79,7 +83,7 @@ export default function App() {
   // Load the saved cache before any screen queries, so a cache-first read
   // can find last session's data.
   useEffect(() => {
-    restoreCache().finally(() => setCacheRestored(true));
+    Promise.all([restoreCache(), loadLang()]).finally(() => setCacheRestored(true));
   }, []);
 
   // Hold the first render until Inter and the cache are ready, so text doesn't

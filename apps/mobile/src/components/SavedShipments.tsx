@@ -4,6 +4,7 @@ import { useQuery } from "@apollo/client/react";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { SHIPMENT_QUERY } from "../graphql/queries";
 import { describeEta } from "../eta";
+import { useLang, useT } from "../i18n";
 import { useTheme, type Theme } from "../theme/theme";
 import type { Shipment } from "../types";
 import { StatusBadge } from "./StatusBadge";
@@ -20,12 +21,15 @@ export function SavedShipments({
   onRemove: (trackingId: string) => void;
 }) {
   const t = useTheme();
+  const tr = useT();
   const styles = useMemo(() => makeStyles(t), [t]);
   if (ids.length === 0) return null;
 
   return (
     <View style={styles.wrap}>
-      <Text style={styles.heading}>My shipments</Text>
+      <Text style={styles.heading} accessibilityRole="header">
+        {tr("saved.heading")}
+      </Text>
       {ids.map((id) => (
         <SavedRow key={id} trackingId={id} onOpen={onOpen} onRemove={onRemove} styles={styles} />
       ))}
@@ -45,13 +49,15 @@ function SavedRow({
   styles: ReturnType<typeof makeStyles>;
 }) {
   const t = useTheme();
+  const tr = useT();
+  const lang = useLang();
   // cache-and-network: shows the last known status instantly (even offline), then refreshes it.
   const { data } = useQuery<{ shipment: Shipment | null }>(SHIPMENT_QUERY, {
     variables: { trackingId },
     fetchPolicy: "cache-and-network",
   });
   const shipment = data?.shipment ?? null;
-  const eta = shipment ? describeEta(shipment) : null;
+  const eta = shipment ? describeEta(shipment, new Date(), lang) : null;
 
   return (
     <View style={styles.row}>
@@ -59,7 +65,11 @@ function SavedRow({
         style={({ pressed }) => [styles.main, pressed && { opacity: 0.7 }]}
         onPress={() => onOpen(trackingId)}
         accessibilityRole="button"
-        accessibilityLabel={`Open ${trackingId}${shipment ? `, ${shipment.origin} to ${shipment.destination}` : ""}`}
+        accessibilityLabel={
+          shipment
+            ? tr("saved.openRoute", { id: trackingId, origin: shipment.origin, destination: shipment.destination })
+            : tr("saved.open", { id: trackingId })
+        }
       >
         <View style={styles.top}>
           <Text style={styles.id}>{trackingId}</Text>
@@ -77,7 +87,7 @@ function SavedRow({
             )}
           </>
         ) : (
-          <Text style={styles.route}>{data ? "No longer found" : "Loading…"}</Text>
+          <Text style={styles.route}>{data ? tr("saved.gone") : tr("saved.loading")}</Text>
         )}
       </Pressable>
       <Pressable
@@ -85,7 +95,7 @@ function SavedRow({
         hitSlop={10}
         style={styles.remove}
         accessibilityRole="button"
-        accessibilityLabel={`Remove ${trackingId} from my shipments`}
+        accessibilityLabel={tr("saved.remove", { id: trackingId })}
       >
         <Ionicons name="close" size={18} color={t.textFaint} />
       </Pressable>

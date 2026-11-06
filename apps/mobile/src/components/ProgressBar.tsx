@@ -4,7 +4,7 @@ import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from "
 import { useTheme } from "../theme/theme";
 
 /** Track + fill. `progress` is 0..1; the fill animates whenever it changes (including from 0 on mount). */
-export function ProgressBar({ progress, color }: { progress: number; color: string }) {
+export function ProgressBar({ progress, color, label }: { progress: number; color: string; label?: string }) {
   const t = useTheme();
   const value = useSharedValue(0);
 
@@ -15,7 +15,13 @@ export function ProgressBar({ progress, color }: { progress: number; color: stri
   const fill = useAnimatedStyle(() => ({ width: `${value.value * 100}%` }));
 
   return (
-    <View style={[styles.track, { backgroundColor: t.surfaceAlt }]}>
+    <View
+      style={[styles.track, { backgroundColor: t.surfaceAlt }]}
+      accessible
+      accessibilityRole="progressbar"
+      accessibilityLabel={label}
+      accessibilityValue={{ min: 0, max: 100, now: Math.round(progress * 100) }}
+    >
       <Animated.View style={[styles.fill, { backgroundColor: color }, fill]} />
     </View>
   );

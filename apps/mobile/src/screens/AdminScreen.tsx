@@ -115,7 +115,7 @@ export function AdminScreen() {
     return (
       <View style={styles.centered}>
         <Text style={styles.subtitle}>Can't reach the server.</Text>
-        <Pressable onPress={() => refetchAuthRequired().catch(() => null)}>
+        <Pressable onPress={() => refetchAuthRequired().catch(() => null)} accessibilityRole="button">
           <Text style={styles.logout}>Try again</Text>
         </Pressable>
       </View>
@@ -150,7 +150,7 @@ function AdminDashboard({ email, role, onLogout }: { email?: string; role: Role;
         <View style={styles.header}>
           <Text style={styles.title}>Admin</Text>
           {onLogout && (
-            <Pressable onPress={onLogout}>
+            <Pressable onPress={onLogout} accessibilityRole="button" hitSlop={10}>
               <Text style={styles.logout}>Log out</Text>
             </Pressable>
           )}
@@ -165,6 +165,8 @@ function AdminDashboard({ email, role, onLogout }: { email?: string; role: Role;
               key={key}
               style={[styles.segment, section === key && styles.segmentActive]}
               onPress={() => setSection(key)}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: section === key }}
             >
               <Text style={[styles.segmentText, section === key && styles.segmentTextActive]}>{label}</Text>
             </Pressable>
@@ -221,6 +223,7 @@ function LoginForm({ onLoggedIn }: { onLoggedIn: () => void }) {
 
         <Text style={styles.label}>Email</Text>
         <TextInput
+          accessibilityLabel="Email"
           style={styles.input}
           autoCapitalize="none"
           autoCorrect={false}
@@ -231,6 +234,7 @@ function LoginForm({ onLoggedIn }: { onLoggedIn: () => void }) {
 
         <Text style={styles.label}>Password</Text>
         <TextInput
+          accessibilityLabel="Password"
           style={styles.input}
           secureTextEntry
           value={password}
@@ -240,7 +244,13 @@ function LoginForm({ onLoggedIn }: { onLoggedIn: () => void }) {
 
         {error && <Text style={styles.error}>{error.message}</Text>}
 
-        <Pressable style={styles.primaryButton} onPress={handleSubmit} disabled={loading}>
+        <Pressable
+          style={styles.primaryButton}
+          onPress={handleSubmit}
+          disabled={loading}
+          accessibilityRole="button"
+          accessibilityState={{ busy: loading, disabled: loading }}
+        >
           {loading ? <ActivityIndicator color={t.onPrimary} /> : <Text style={styles.primaryButtonText}>Log in</Text>}
         </Pressable>
       </View>
@@ -322,16 +332,17 @@ function CreateShipmentForm() {
       <Text style={styles.sectionTitle}>Create a shipment</Text>
 
       <Text style={styles.label}>Origin</Text>
-      <TextInput style={styles.input} value={origin} onChangeText={setOrigin} placeholder="Delhi" />
+      <TextInput accessibilityLabel="Origin" style={styles.input} value={origin} onChangeText={setOrigin} placeholder="Delhi" />
 
       <Text style={styles.label}>Destination</Text>
-      <TextInput style={styles.input} value={destination} onChangeText={setDestination} placeholder="Mumbai" />
+      <TextInput accessibilityLabel="Destination" style={styles.input} value={destination} onChangeText={setDestination} placeholder="Mumbai" />
 
       <Text style={styles.label}>Receiver name</Text>
-      <TextInput style={styles.input} value={receiverName} onChangeText={setReceiverName} placeholder="Asha Rao" />
+      <TextInput accessibilityLabel="Receiver name" style={styles.input} value={receiverName} onChangeText={setReceiverName} placeholder="Asha Rao" />
 
       <Text style={styles.label}>Receiver phone (optional)</Text>
       <TextInput
+        accessibilityLabel="Receiver phone (optional)"
         style={styles.input}
         keyboardType="phone-pad"
         value={receiverPhone}
@@ -340,7 +351,7 @@ function CreateShipmentForm() {
       />
 
       <Text style={styles.label}>Sender name (optional)</Text>
-      <TextInput style={styles.input} value={senderName} onChangeText={setSenderName} placeholder="Ravi Kumar" />
+      <TextInput accessibilityLabel="Sender name (optional)" style={styles.input} value={senderName} onChangeText={setSenderName} placeholder="Ravi Kumar" />
 
       <Text style={styles.label}>Package type (optional)</Text>
       <View style={styles.chipRow}>
@@ -362,6 +373,7 @@ function CreateShipmentForm() {
 
       <Text style={styles.label}>Weight in kg (optional)</Text>
       <TextInput
+        accessibilityLabel="Weight in kg (optional)"
         style={styles.input}
         keyboardType="decimal-pad"
         value={weight}
@@ -370,7 +382,7 @@ function CreateShipmentForm() {
       />
 
       <Text style={styles.label}>Description (optional)</Text>
-      <TextInput style={styles.input} value={description} onChangeText={setDescription} placeholder="Glassware" />
+      <TextInput accessibilityLabel="Description (optional)" style={styles.input} value={description} onChangeText={setDescription} placeholder="Glassware" />
 
       <Text style={styles.label}>Expected delivery (optional)</Text>
       <View style={styles.chipRow}>
@@ -392,12 +404,18 @@ function CreateShipmentForm() {
 
       {(formError || error) && <Text style={styles.error}>{formError ?? error?.message}</Text>}
 
-      <Pressable style={styles.primaryButton} onPress={handleSubmit} disabled={loading}>
+      <Pressable
+        style={styles.primaryButton}
+        onPress={handleSubmit}
+        disabled={loading}
+        accessibilityRole="button"
+        accessibilityState={{ busy: loading, disabled: loading }}
+      >
         {loading ? <ActivityIndicator color={t.onPrimary} /> : <Text style={styles.primaryButtonText}>Create shipment</Text>}
       </Pressable>
 
       {createdTrackingId && (
-        <Pressable style={styles.successBanner} onPress={handleCopy}>
+        <Pressable style={styles.successBanner} onPress={handleCopy} accessibilityRole="button" accessibilityLabel={"Copy tracking ID " + createdTrackingId}>
           <Text style={styles.successLabel}>
             {copied ? "Copied to clipboard" : "Created. Tap the ID to copy it:"}
           </Text>
@@ -536,9 +554,10 @@ function UpdateStatusForm({ initialTrackingId, role }: { initialTrackingId: stri
           value={trackingId}
           onChangeText={setTrackingId}
           onSubmitEditing={handleLoad}
+          accessibilityLabel="Tracking ID"
           placeholder="e.g. SHP-7K2M9QXZ"
         />
-        <Pressable style={styles.secondaryButton} onPress={handleLoad}>
+        <Pressable style={styles.secondaryButton} onPress={handleLoad} accessibilityRole="button">
           <Text style={styles.secondaryButtonText}>Load</Text>
         </Pressable>
         <Pressable
@@ -594,6 +613,7 @@ function UpdateStatusForm({ initialTrackingId, role }: { initialTrackingId: stri
 
               <Text style={styles.label}>Location</Text>
               <TextInput
+                accessibilityLabel="Location"
                 style={styles.input}
                 value={location}
                 onChangeText={setLocation}
@@ -604,6 +624,7 @@ function UpdateStatusForm({ initialTrackingId, role }: { initialTrackingId: stri
                 <>
                   <Text style={styles.label}>Received by (required)</Text>
                   <TextInput
+                    accessibilityLabel="Received by (required)"
                     style={styles.input}
                     value={deliveredTo}
                     onChangeText={setDeliveredTo}
@@ -611,6 +632,7 @@ function UpdateStatusForm({ initialTrackingId, role }: { initialTrackingId: stri
                   />
                   <Text style={styles.label}>Delivery code</Text>
                   <TextInput
+                    accessibilityLabel="Delivery code"
                     style={styles.input}
                     keyboardType="number-pad"
                     maxLength={4}
@@ -624,11 +646,17 @@ function UpdateStatusForm({ initialTrackingId, role }: { initialTrackingId: stri
               <Text style={styles.label}>
                 {nextStatus && isExceptionStatus(nextStatus) ? "Reason (required)" : "Note (optional)"}
               </Text>
-              <TextInput style={styles.input} value={note} onChangeText={setNote} />
+              <TextInput style={styles.input} value={note} onChangeText={setNote} accessibilityLabel="Note" />
 
               {(formError || updateError) && <Text style={styles.error}>{formError ?? updateError?.message}</Text>}
 
-              <Pressable style={styles.primaryButton} onPress={handleAdvance} disabled={updating || !nextStatus}>
+              <Pressable
+                style={styles.primaryButton}
+                onPress={handleAdvance}
+                disabled={updating || !nextStatus}
+                accessibilityRole="button"
+                accessibilityState={{ busy: updating, disabled: updating || !nextStatus }}
+              >
                 {updating ? (
                   <ActivityIndicator color={t.onPrimary} />
                 ) : (
