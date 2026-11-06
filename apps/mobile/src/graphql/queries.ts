@@ -15,6 +15,7 @@ export const SHIPMENT_FIELDS = gql`
     description
     estimatedDelivery
     currentStatus
+    allowedNextStatuses
     history {
       status
       location

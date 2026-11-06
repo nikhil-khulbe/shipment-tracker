@@ -30,6 +30,11 @@ const lightStatus: Record<ShipmentStatus, string> = {
   IN_TRANSIT: "#7c3aed",
   OUT_FOR_DELIVERY: "#d97706",
   DELIVERED: "#16a34a",
+  DELAYED: "#b45309",
+  ON_HOLD: "#64748b",
+  DELIVERY_ATTEMPT_FAILED: "#dc2626",
+  RETURNED: "#be185d",
+  CANCELLED: "#6b7280",
 };
 
 // Brighter tints so badges keep contrast on dark surfaces.
@@ -39,6 +44,11 @@ const darkStatus: Record<ShipmentStatus, string> = {
   IN_TRANSIT: "#a78bfa",
   OUT_FOR_DELIVERY: "#fbbf24",
   DELIVERED: "#4ade80",
+  DELAYED: "#f59e0b",
+  ON_HOLD: "#94a3b8",
+  DELIVERY_ATTEMPT_FAILED: "#f87171",
+  RETURNED: "#f472b6",
+  CANCELLED: "#9ca3af",
 };
 
 export const lightTheme: Theme = {

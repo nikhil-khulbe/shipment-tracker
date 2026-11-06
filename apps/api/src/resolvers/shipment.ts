@@ -1,7 +1,7 @@
 import type { GraphQLContext } from "../context.js";
 import * as shipmentService from "../services/shipmentService.js";
 import { requireAdmin, badUserInput } from "../errors.js";
-import { isShipmentStatus } from "../domain/status.js";
+import { allowedNext, isShipmentStatus, lastRegularStatus } from "../domain/status.js";
 import { Admin } from "../models/Admin.js";
 import { maskPhone } from "../domain/shipmentDetails.js";
 import { config } from "../config.js";
@@ -33,6 +33,7 @@ function serializeShipment(doc: any) {
     description: doc.description ?? null,
     estimatedDelivery: doc.estimatedDelivery ? new Date(doc.estimatedDelivery).toISOString() : null,
     currentStatus: doc.currentStatus,
+    allowedNextStatuses: allowedNext(doc.currentStatus, lastRegularStatus(doc.history)),
     history: doc.history.map((event: any) => ({
       status: event.status,
       location: event.location,

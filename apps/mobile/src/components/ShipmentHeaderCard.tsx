@@ -1,7 +1,7 @@
 import { StyleSheet, View } from "react-native";
 import type { Shipment } from "../types";
 import { describeEta } from "../eta";
-import { statusProgress } from "../theme/status";
+import { shipmentProgress } from "../theme/status";
 import { useTheme } from "../theme/theme";
 import { ProgressBar } from "./ProgressBar";
 import { StatusBadge } from "./StatusBadge";
@@ -61,7 +61,7 @@ export function ShipmentHeaderCard({ shipment }: { shipment: Shipment }) {
       ) : null}
 
       <ProgressBar
-        progress={statusProgress(shipment.currentStatus)}
+        progress={shipmentProgress(shipment)}
         color={t.status[shipment.currentStatus]}
       />
     </View>

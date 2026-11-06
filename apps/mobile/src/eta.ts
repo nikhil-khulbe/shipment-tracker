@@ -18,9 +18,22 @@ export type EtaInfo = { text: string; overdue: boolean };
  * today" stays true all day.
  */
 export function describeEta(shipment: Pick<Shipment, "currentStatus" | "estimatedDelivery" | "history">, now: Date = new Date()): EtaInfo | null {
-  if (shipment.currentStatus === "DELIVERED") {
-    const delivered = shipment.history[shipment.history.length - 1];
-    return delivered ? { text: `Delivered on ${formatDay(new Date(delivered.timestamp))}`, overdue: false } : null;
+  const last = shipment.history[shipment.history.length - 1];
+  const reason = last?.note ? `: ${last.note}` : "";
+
+  switch (shipment.currentStatus) {
+    case "DELIVERED":
+      return last ? { text: `Delivered on ${formatDay(new Date(last.timestamp))}`, overdue: false } : null;
+    case "RETURNED":
+      return { text: `Returned to sender${reason}`, overdue: true };
+    case "CANCELLED":
+      return { text: `Cancelled${reason}`, overdue: true };
+    case "ON_HOLD":
+      return { text: `On hold${reason}`, overdue: true };
+    case "DELAYED":
+      return { text: `Delayed${reason}`, overdue: true };
+    case "DELIVERY_ATTEMPT_FAILED":
+      return { text: `Delivery attempt failed${reason}`, overdue: true };
   }
   if (!shipment.estimatedDelivery) return null;
 

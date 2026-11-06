@@ -5,6 +5,11 @@ export const typeDefs = /* GraphQL */ `
     IN_TRANSIT
     OUT_FOR_DELIVERY
     DELIVERED
+    DELAYED
+    ON_HOLD
+    DELIVERY_ATTEMPT_FAILED
+    RETURNED
+    CANCELLED
   }
 
   enum PackageType {
@@ -37,6 +42,8 @@ export const typeDefs = /* GraphQL */ `
     "ISO date-time. Null when no estimate was given."
     estimatedDelivery: String
     currentStatus: ShipmentStatus!
+    "The statuses this shipment may move to next. Empty once it is DELIVERED, RETURNED or CANCELLED."
+    allowedNextStatuses: [ShipmentStatus!]!
     history: [StatusEvent!]!
     createdAt: String!
     updatedAt: String!

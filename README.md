@@ -27,7 +27,7 @@ _Demo GIF: TODO._
 - **Admin (JWT login by default):** `createShipment`, `updateStatus`, and `shipments(status, search, cursor, limit)` — a cursor-paginated list. Set `REQUIRE_ADMIN=false` on the API to make them open for demos; the public `authRequired` query tells the app whether to show the login form.
 - **Shipment details (all optional):** sender name, receiver phone, package type, weight, description and an **estimated delivery date**. The Track screen shows "Arriving tomorrow" / "Arriving by Sat, 9 Nov" (red when running late) and "Delivered on ..." once done. Shipments created before these fields existed still work. The receiver's phone is masked (last 4 digits) for everyone except a logged-in admin, because a tracking ID is not a secret.
 - **Abuse protection:** per-IP rate limit on `/graphql` (300 / 15 min) and a much tighter one on `login` (10 / 15 min), plus a query depth limit.
-- **Status state machine:** `CREATED → PICKED_UP → IN_TRANSIT → OUT_FOR_DELIVERY → DELIVERED`, one step forward at a time, `DELIVERED` is terminal. Illegal moves are rejected with `INVALID_STATUS_TRANSITION`.
+- **Status state machine:** a main path `CREATED → PICKED_UP → IN_TRANSIT → OUT_FOR_DELIVERY → DELIVERED`, one step at a time, plus exceptions: `DELAYED`, `ON_HOLD`, `DELIVERY_ATTEMPT_FAILED`, `RETURNED`, `CANCELLED`. Each exception needs a written reason (shown on the Track screen). `DELAYED`/`ON_HOLD` resume where the parcel left off, a failed attempt can be retried, `DELIVERED`/`RETURNED`/`CANCELLED` are final. Illegal moves are rejected with `INVALID_STATUS_TRANSITION`. The API exposes `allowedNextStatuses` on each shipment, so the app never duplicates the rules.
 - Status history is append-only.
 
 **App**
@@ -103,7 +103,7 @@ On a physical phone, `localhost` is the phone itself — set `EXPO_PUBLIC_API_UR
 npm test -w api
 ```
 
-Sixteen tests run through `ApolloServer.executeOperation` against an in-memory MongoDB, so schema, context and error formatting are all exercised:
+Twenty-two tests run through `ApolloServer.executeOperation` against an in-memory MongoDB, so schema, context and error formatting are all exercised:
 
 1. Public `shipment` query returns full history, and `null` for an unknown ID.
 2. `createShipment` creates a correct initial state.
@@ -116,6 +116,8 @@ Sixteen tests run through `ApolloServer.executeOperation` against an in-memory M
 9. Locked mode (`REQUIRE_ADMIN=true`): `authRequired` is reported, list/create/update reject anonymous callers without changing data, public tracking stays open, a logged-in admin still works.
 10. The query depth limit.
 11. Shipment details: stored, phone masked for anonymous viewers, invalid ETD/phone/weight rejected, old shipments still load.
+12. Exception rules (pure): terminal states have no exit, nothing moves to itself, resume targets, where cancel/return/failed-attempt are reachable.
+13. Exceptions through the API: a reason is required, delay then resume then deliver, failed attempt then retry then return, cancel before pickup.
 
 The first run downloads a MongoDB binary, so it can be slow on a cold machine.
 

@@ -22,7 +22,8 @@ import { feedback } from "../feedback";
 import { STATUS_LABELS } from "../theme/status";
 import { useTheme, type Theme } from "../theme/theme";
 import { etaInDays } from "../eta";
-import { PACKAGE_TYPES, SHIPMENT_STATUSES, type PackageType, type Shipment, type ShipmentStatus } from "../types";
+import { isExceptionStatus, PACKAGE_TYPES, type PackageType, type Shipment, type ShipmentStatus } from "../types";
+import { StatusBadge } from "../components/StatusBadge";
 
 const ETA_OPTIONS = [
   { days: 1, label: "Tomorrow" },
@@ -31,15 +32,6 @@ const ETA_OPTIONS = [
   { days: 5, label: "5 days" },
   { days: 7, label: "1 week" },
 ];
-
-/** The one legal next step for each status; empty means terminal (DELIVERED). */
-const NEXT_STATUS: Record<ShipmentStatus, ShipmentStatus | null> = {
-  CREATED: "PICKED_UP",
-  PICKED_UP: "IN_TRANSIT",
-  IN_TRANSIT: "OUT_FOR_DELIVERY",
-  OUT_FOR_DELIVERY: "DELIVERED",
-  DELIVERED: null,
-};
 
 type Section = "list" | "create" | "update";
 const SECTIONS: { key: Section; label: string }[] = [
@@ -404,6 +396,8 @@ function UpdateStatusForm({ initialTrackingId }: { initialTrackingId: string | n
   const [trackingId, setTrackingId] = useState("");
   const [location, setLocation] = useState("");
   const [note, setNote] = useState("");
+  const [chosen, setChosen] = useState<ShipmentStatus | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
 
   const [loadShipment, { data, loading: loadingShipment, error: loadError }] = useLazyQuery<{
     shipment: Shipment | null;
@@ -424,7 +418,18 @@ function UpdateStatusForm({ initialTrackingId }: { initialTrackingId: string | n
   }, [initialTrackingId]);
 
   const shipment = data?.shipment ?? null;
-  const nextStatus = shipment ? NEXT_STATUS[shipment.currentStatus] : null;
+  // The API owns the rules: it says which moves are legal from here.
+  const options = shipment?.allowedNextStatuses ?? [];
+  const nextStatus = chosen !== null && options.includes(chosen) ? chosen : null;
+
+  // When a different shipment (or a new status) loads, pre-select the main-path
+  // step if there is one, so the common case is a single tap on the button.
+  useEffect(() => {
+    const first = options.find((s) => !isExceptionStatus(s)) ?? null;
+    setChosen(first);
+    setFormError(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shipment?.trackingId, shipment?.currentStatus]);
 
   function handleLoad() {
     const trimmed = trackingId.trim();
@@ -437,6 +442,11 @@ function UpdateStatusForm({ initialTrackingId }: { initialTrackingId: string | n
     if (!shipment || !nextStatus) return;
     const eventLocation = location.trim() || shipment.destination;
     const eventNote = note.trim() || null;
+    if (isExceptionStatus(nextStatus) && !eventNote) {
+      setFormError("Please say why (the reason is shown to anyone tracking this shipment).");
+      return;
+    }
+    setFormError(null);
     const result = await updateStatus({
       variables: {
         input: {
@@ -454,6 +464,7 @@ function UpdateStatusForm({ initialTrackingId }: { initialTrackingId: string | n
         updateStatus: {
           ...shipment,
           currentStatus: nextStatus,
+          allowedNextStatuses: [] as ShipmentStatus[], // the server's answer replaces this in a moment
           history: [
             ...shipment.history,
             {
@@ -507,35 +518,33 @@ function UpdateStatusForm({ initialTrackingId }: { initialTrackingId: string | n
 
       {shipment && (
         <View style={styles.spacingTop}>
+          <Text style={styles.label}>Current status</Text>
           <View style={styles.chipRow}>
-            {SHIPMENT_STATUSES.map((status) => {
-              const isCurrent = status === shipment.currentStatus;
-              const isNext = status === nextStatus;
-              return (
-                <View
-                  key={status}
-                  style={[
-                    styles.chip,
-                    isCurrent && styles.chipCurrent,
-                    isNext && styles.chipNext,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.chipText,
-                      isCurrent && styles.chipTextCurrent,
-                      isNext && styles.chipTextNext,
-                    ]}
-                  >
-                    {status.replace(/_/g, " ")}
-                  </Text>
-                </View>
-              );
-            })}
+            <StatusBadge status={shipment.currentStatus} />
           </View>
 
-          {nextStatus ? (
+          {options.length > 0 ? (
             <>
+              <Text style={styles.label}>Move to</Text>
+              <View style={styles.chipRow}>
+                {options.map((status) => {
+                  const selected = status === nextStatus;
+                  return (
+                    <Pressable
+                      key={status}
+                      style={[styles.chip, selected && styles.chipNext]}
+                      onPress={() => setChosen(status)}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected }}
+                    >
+                      <Text style={[styles.chipText, selected && styles.chipTextNext]}>
+                        {STATUS_LABELS[status]}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+
               <Text style={styles.label}>Location</Text>
               <TextInput
                 style={styles.input}
@@ -544,23 +553,27 @@ function UpdateStatusForm({ initialTrackingId }: { initialTrackingId: string | n
                 placeholder={shipment.destination}
               />
 
-              <Text style={styles.label}>Note (optional)</Text>
+              <Text style={styles.label}>
+                {nextStatus && isExceptionStatus(nextStatus) ? "Reason (required)" : "Note (optional)"}
+              </Text>
               <TextInput style={styles.input} value={note} onChangeText={setNote} />
 
-              {updateError && <Text style={styles.error}>{updateError.message}</Text>}
+              {(formError || updateError) && <Text style={styles.error}>{formError ?? updateError?.message}</Text>}
 
-              <Pressable style={styles.primaryButton} onPress={handleAdvance} disabled={updating}>
+              <Pressable style={styles.primaryButton} onPress={handleAdvance} disabled={updating || !nextStatus}>
                 {updating ? (
                   <ActivityIndicator color={t.onPrimary} />
                 ) : (
                   <Text style={styles.primaryButtonText}>
-                    Advance to {nextStatus.replace(/_/g, " ")}
+                    {nextStatus ? `Move to ${STATUS_LABELS[nextStatus]}` : "Choose a status"}
                   </Text>
                 )}
               </Pressable>
             </>
           ) : (
-            <Text style={styles.spacingTop}>This shipment has already been delivered.</Text>
+            <Text style={styles.spacingTop}>
+              This shipment is {STATUS_LABELS[shipment.currentStatus].toLowerCase()} and can't be changed any more.
+            </Text>
           )}
         </View>
       )}

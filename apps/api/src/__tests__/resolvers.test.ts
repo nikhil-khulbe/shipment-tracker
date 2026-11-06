@@ -5,7 +5,13 @@ import { createTestServer, execute } from "./helpers.js";
 import { Shipment } from "../models/Shipment.js";
 import { Admin } from "../models/Admin.js";
 import { hashPassword } from "../services/authService.js";
-import { canTransition, SHIPMENT_STATUSES, type ShipmentStatus } from "../domain/status.js";
+import {
+  allowedNext,
+  canTransition,
+  lastRegularStatus,
+  REGULAR_STATUSES,
+  SHIPMENT_STATUSES,
+} from "../domain/status.js";
 import type { ApolloServer } from "@apollo/server";
 import type { GraphQLContext } from "../context.js";
 import { config } from "../config.js";
@@ -310,14 +316,133 @@ describe("Query.shipments (admin list)", () => {
 });
 
 describe("canTransition (pure unit test, no DB)", () => {
-  test("only allows moving one step forward through the pipeline; DELIVERED is terminal", () => {
-    for (const from of SHIPMENT_STATUSES) {
-      for (const to of SHIPMENT_STATUSES) {
-        const expectedNextIndex = SHIPMENT_STATUSES.indexOf(from as ShipmentStatus) + 1;
-        const isTheOneLegalStep = SHIPMENT_STATUSES[expectedNextIndex] === to;
-        expect(canTransition(from as ShipmentStatus, to as ShipmentStatus)).toBe(isTheOneLegalStep);
+  test("between main-path statuses, only the next step is legal; DELIVERED is terminal", () => {
+    for (const from of REGULAR_STATUSES) {
+      for (const to of REGULAR_STATUSES) {
+        const isTheOneLegalStep = REGULAR_STATUSES[REGULAR_STATUSES.indexOf(from) + 1] === to;
+        expect(canTransition(from, to)).toBe(isTheOneLegalStep);
       }
     }
+  });
+
+  test("terminal statuses have no way out; no status can move to itself", () => {
+    for (const terminal of ["DELIVERED", "RETURNED", "CANCELLED"] as const) {
+      for (const lastRegular of REGULAR_STATUSES) {
+        expect(allowedNext(terminal, lastRegular)).toEqual([]);
+      }
+    }
+    for (const status of SHIPMENT_STATUSES) {
+      for (const lastRegular of REGULAR_STATUSES) {
+        expect(allowedNext(status, lastRegular)).not.toContain(status);
+      }
+    }
+  });
+
+  test("a delayed or held shipment resumes where it left off, and exceptions are only reachable from sensible places", () => {
+    expect(allowedNext("DELAYED", "IN_TRANSIT")).toEqual(
+      expect.arrayContaining(["IN_TRANSIT", "OUT_FOR_DELIVERY", "ON_HOLD", "RETURNED"]),
+    );
+    expect(allowedNext("DELAYED", "IN_TRANSIT")).not.toContain("PICKED_UP");
+    // A parcel still at the origin can be cancelled but not "returned"; one on the road is the opposite.
+    expect(allowedNext("ON_HOLD", "CREATED")).toContain("CANCELLED");
+    expect(allowedNext("ON_HOLD", "CREATED")).not.toContain("RETURNED");
+    expect(allowedNext("ON_HOLD", "IN_TRANSIT")).toContain("RETURNED");
+    expect(allowedNext("ON_HOLD", "IN_TRANSIT")).not.toContain("CANCELLED");
+    // A failed delivery attempt only happens on the last mile, and only retry / hold / return follow it.
+    expect(allowedNext("IN_TRANSIT", "IN_TRANSIT")).not.toContain("DELIVERY_ATTEMPT_FAILED");
+    expect(allowedNext("OUT_FOR_DELIVERY", "OUT_FOR_DELIVERY")).toContain("DELIVERY_ATTEMPT_FAILED");
+    expect(allowedNext("DELIVERY_ATTEMPT_FAILED", "OUT_FOR_DELIVERY").sort()).toEqual(
+      ["ON_HOLD", "OUT_FOR_DELIVERY", "RETURNED"].sort(),
+    );
+  });
+
+  test("lastRegularStatus ignores exception events", () => {
+    expect(lastRegularStatus([{ status: "CREATED" }, { status: "PICKED_UP" }, { status: "DELAYED" }])).toBe("PICKED_UP");
+    expect(lastRegularStatus([])).toBe("CREATED");
+  });
+});
+
+describe("exception statuses through the API", () => {
+  const MOVE = `
+    mutation Move($input: UpdateStatusInput!) {
+      updateStatus(input: $input) { currentStatus allowedNextStatuses history { status location note } }
+    }
+  `;
+  const move = (status: string, note?: string) =>
+    execute(server, {
+      query: MOVE,
+      variables: { input: { trackingId: "SHP-TEST0001", status, location: "Nagpur Hub", note } },
+    }) as Promise<any>;
+
+  test("a delay needs a reason, then the shipment resumes its journey and is delivered", async () => {
+    await seedShipment(); // PICKED_UP
+
+    const noReason = await move("DELAYED");
+    expect(noReason.errors?.[0]?.extensions?.code).toBe("BAD_USER_INPUT");
+    expect((await Shipment.findOne({ trackingId: "SHP-TEST0001" }))?.currentStatus).toBe("PICKED_UP");
+
+    const delayed = await move("DELAYED", "Heavy rain on the highway");
+    expect(delayed.errors).toBeUndefined();
+    expect(delayed.data.updateStatus.currentStatus).toBe("DELAYED");
+    expect(delayed.data.updateStatus.allowedNextStatuses).toEqual(
+      expect.arrayContaining(["PICKED_UP", "IN_TRANSIT", "ON_HOLD", "RETURNED"]),
+    );
+
+    // It was only picked up, so it can't skip ahead to the last mile.
+    const skip = await move("OUT_FOR_DELIVERY");
+    expect(skip.errors?.[0]?.extensions?.code).toBe("INVALID_STATUS_TRANSITION");
+
+    const resumed = await move("IN_TRANSIT");
+    expect(resumed.errors).toBeUndefined();
+    expect(resumed.data.updateStatus.history.map((e: any) => e.status)).toEqual([
+      "CREATED",
+      "PICKED_UP",
+      "DELAYED",
+      "IN_TRANSIT",
+    ]);
+  });
+
+  test("a failed delivery can be retried or returned; RETURNED is final", async () => {
+    await Shipment.create({
+      trackingId: "SHP-TEST0001",
+      origin: "Delhi",
+      destination: "Mumbai",
+      receiverName: "Test Receiver",
+      currentStatus: "OUT_FOR_DELIVERY",
+      history: [
+        { status: "CREATED", location: "Delhi" },
+        { status: "PICKED_UP", location: "Delhi" },
+        { status: "IN_TRANSIT", location: "Nagpur" },
+        { status: "OUT_FOR_DELIVERY", location: "Mumbai" },
+      ],
+    });
+    const failed = await move("DELIVERY_ATTEMPT_FAILED", "Receiver not home");
+    expect(failed.data.updateStatus.currentStatus).toBe("DELIVERY_ATTEMPT_FAILED");
+
+    const retry = await move("OUT_FOR_DELIVERY");
+    expect(retry.data.updateStatus.currentStatus).toBe("OUT_FOR_DELIVERY");
+
+    await move("DELIVERY_ATTEMPT_FAILED", "Receiver not home again");
+    const returned = await move("RETURNED", "Two failed attempts");
+    expect(returned.data.updateStatus.currentStatus).toBe("RETURNED");
+    expect(returned.data.updateStatus.allowedNextStatuses).toEqual([]);
+
+    const afterReturn = await move("OUT_FOR_DELIVERY");
+    expect(afterReturn.errors?.[0]?.extensions?.code).toBe("INVALID_STATUS_TRANSITION");
+  });
+
+  test("a shipment can be cancelled before it leaves, with a reason", async () => {
+    await Shipment.create({
+      trackingId: "SHP-TEST0001",
+      origin: "Delhi",
+      destination: "Mumbai",
+      receiverName: "Test Receiver",
+      currentStatus: "CREATED",
+      history: [{ status: "CREATED", location: "Delhi" }],
+    });
+    expect((await move("CANCELLED")).errors?.[0]?.extensions?.code).toBe("BAD_USER_INPUT");
+    const cancelled = await move("CANCELLED", "Sender changed their mind");
+    expect(cancelled.data.updateStatus.currentStatus).toBe("CANCELLED");
   });
 });
 

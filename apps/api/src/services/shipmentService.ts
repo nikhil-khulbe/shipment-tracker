@@ -1,7 +1,7 @@
 import type { FilterQuery } from "mongoose";
 import { Shipment, type ShipmentDocument } from "../models/Shipment.js";
 import { generateTrackingId } from "../domain/trackingId.js";
-import { canTransition, type ShipmentStatus } from "../domain/status.js";
+import { canTransition, lastRegularStatus, requiresReason, type ShipmentStatus } from "../domain/status.js";
 import { parseEstimatedDelivery, type PackageType } from "../domain/shipmentDetails.js";
 import { badUserInput, invalidStatusTransition, notFound } from "../errors.js";
 
@@ -99,10 +99,16 @@ export async function updateStatus(input: UpdateStatusInput) {
     throw notFound(`No shipment found for tracking ID "${trackingId}".`);
   }
 
-  if (!canTransition(current.currentStatus as ShipmentStatus, input.status)) {
+  const lastRegular = lastRegularStatus(current.history);
+  if (!canTransition(current.currentStatus as ShipmentStatus, input.status, lastRegular)) {
     throw invalidStatusTransition(
       `Cannot move a shipment from ${current.currentStatus} to ${input.status}.`,
     );
+  }
+
+  // A problem status without a reason is useless to the person tracking the parcel.
+  if (requiresReason(input.status) && !input.note?.trim()) {
+    throw badUserInput(`A note explaining the reason is required when setting ${input.status}.`);
   }
 
   const event = {
