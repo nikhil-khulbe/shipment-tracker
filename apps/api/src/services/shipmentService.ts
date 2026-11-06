@@ -2,6 +2,7 @@ import type { FilterQuery } from "mongoose";
 import { Shipment, type ShipmentDocument } from "../models/Shipment.js";
 import { generateTrackingId } from "../domain/trackingId.js";
 import { canTransition, type ShipmentStatus } from "../domain/status.js";
+import { parseEstimatedDelivery, type PackageType } from "../domain/shipmentDetails.js";
 import { badUserInput, invalidStatusTransition, notFound } from "../errors.js";
 
 const MAX_TRACKING_ID_ATTEMPTS = 3;
@@ -11,6 +12,12 @@ export type CreateShipmentInput = {
   destination: string;
   receiverName: string;
   originLocation?: string | null;
+  senderName?: string | null;
+  receiverPhone?: string | null;
+  packageType?: PackageType | null;
+  weightKg?: number | null;
+  description?: string | null;
+  estimatedDelivery?: string | null;
 };
 
 export type UpdateStatusInput = {
@@ -30,6 +37,12 @@ export function findByTrackingId(trackingId: string): Promise<ShipmentDocument |
  * E11000) rather than checking-then-inserting, which would race.
  */
 export async function createShipment(input: CreateShipmentInput) {
+  let estimatedDelivery: Date | undefined;
+  if (input.estimatedDelivery) {
+    const parsed = parseEstimatedDelivery(input.estimatedDelivery);
+    if (!parsed) throw badUserInput("estimatedDelivery must be a valid date that is not in the past.");
+    estimatedDelivery = parsed;
+  }
   for (let attempt = 1; attempt <= MAX_TRACKING_ID_ATTEMPTS; attempt++) {
     const trackingId = generateTrackingId();
     try {
@@ -38,6 +51,13 @@ export async function createShipment(input: CreateShipmentInput) {
         origin: input.origin,
         destination: input.destination,
         receiverName: input.receiverName,
+        // `|| undefined` so blank strings from a form aren't stored as "".
+        senderName: input.senderName || undefined,
+        receiverPhone: input.receiverPhone || undefined,
+        packageType: input.packageType ?? undefined,
+        weightKg: input.weightKg ?? undefined,
+        description: input.description || undefined,
+        estimatedDelivery,
         currentStatus: "CREATED",
         history: [
           {

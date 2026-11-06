@@ -1,20 +1,34 @@
 import { gql } from "@apollo/client";
 
+/** Everything the app shows about one shipment. Shared so queries and mutations agree. */
+export const SHIPMENT_FIELDS = gql`
+  fragment ShipmentFields on Shipment {
+    id
+    trackingId
+    origin
+    destination
+    receiverName
+    senderName
+    receiverPhone
+    packageType
+    weightKg
+    description
+    estimatedDelivery
+    currentStatus
+    history {
+      status
+      location
+      note
+      timestamp
+    }
+  }
+`;
+
 export const SHIPMENT_QUERY = gql`
+  ${SHIPMENT_FIELDS}
   query Shipment($trackingId: String!) {
     shipment(trackingId: $trackingId) {
-      id
-      trackingId
-      origin
-      destination
-      receiverName
-      currentStatus
-      history {
-        status
-        location
-        note
-        timestamp
-      }
+      ...ShipmentFields
     }
   }
 `;

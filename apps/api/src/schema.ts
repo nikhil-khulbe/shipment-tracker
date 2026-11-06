@@ -7,6 +7,14 @@ export const typeDefs = /* GraphQL */ `
     DELIVERED
   }
 
+  enum PackageType {
+    DOCUMENT
+    PARCEL
+    FRAGILE
+    ELECTRONICS
+    OTHER
+  }
+
   type StatusEvent {
     status: ShipmentStatus!
     location: String!
@@ -20,6 +28,14 @@ export const typeDefs = /* GraphQL */ `
     origin: String!
     destination: String!
     receiverName: String!
+    senderName: String
+    "Masked (last 4 digits only) unless the caller is a logged-in admin."
+    receiverPhone: String
+    packageType: PackageType
+    weightKg: Float
+    description: String
+    "ISO date-time. Null when no estimate was given."
+    estimatedDelivery: String
     currentStatus: ShipmentStatus!
     history: [StatusEvent!]!
     createdAt: String!
@@ -48,6 +64,13 @@ export const typeDefs = /* GraphQL */ `
     destination: String!
     receiverName: String!
     originLocation: String
+    senderName: String
+    receiverPhone: String
+    packageType: PackageType
+    weightKg: Float
+    description: String
+    "ISO date or date-time; must not be more than a day in the past."
+    estimatedDelivery: String
   }
 
   input UpdateStatusInput {

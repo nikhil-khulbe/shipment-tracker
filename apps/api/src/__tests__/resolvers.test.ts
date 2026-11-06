@@ -393,3 +393,83 @@ describe("query depth limit", () => {
     expect(validate(schema, parse(`{ ${nest(8)} }`), [depthLimit(8)])).toHaveLength(1);
   });
 });
+
+describe("shipment details and estimated delivery", () => {
+  const DETAILS_MUTATION = `
+    mutation Create($input: CreateShipmentInput!) {
+      createShipment(input: $input) {
+        trackingId senderName receiverPhone packageType weightKg description estimatedDelivery
+      }
+    }
+  `;
+  const DETAILS_QUERY = `
+    query S($trackingId: String!) {
+      shipment(trackingId: $trackingId) { receiverPhone senderName packageType weightKg estimatedDelivery }
+    }
+  `;
+  const base = { origin: "Delhi", destination: "Pune", receiverName: "Asha Rao" };
+  const inThreeDays = () => new Date(Date.now() + 3 * 86400000).toISOString();
+
+  test("stores the details, and masks the phone number from anonymous viewers", async () => {
+    const admin = await seedAdmin();
+    const eta = inThreeDays();
+    const created: any = await execute(server, {
+      query: DETAILS_MUTATION,
+      variables: {
+        input: {
+          ...base,
+          senderName: "Ravi Kumar",
+          receiverPhone: "+91 98765 43210",
+          packageType: "FRAGILE",
+          weightKg: 2.5,
+          description: "Glassware",
+          estimatedDelivery: eta,
+        },
+      },
+      admin,
+    });
+    expect(created.errors).toBeUndefined();
+    const { trackingId } = created.data.createShipment;
+    // The admin who just created it sees the full number...
+    expect(created.data.createShipment.receiverPhone).toBe("+91 98765 43210");
+    expect(created.data.createShipment.estimatedDelivery).toBe(eta);
+
+    // ...but anyone with just the tracking ID sees only the last 4 digits.
+    const anon: any = await execute(server, { query: DETAILS_QUERY, variables: { trackingId }, admin: null });
+    expect(anon.errors).toBeUndefined();
+    expect(anon.data.shipment).toEqual({
+      receiverPhone: "•".repeat(6) + "3210",
+      senderName: "Ravi Kumar",
+      packageType: "FRAGILE",
+      weightKg: 2.5,
+      estimatedDelivery: eta,
+    });
+  });
+
+  test("rejects an invalid or past estimated delivery, a bad phone, and a bad weight; nothing is stored", async () => {
+    const bad = [
+      { estimatedDelivery: "not-a-date" },
+      { estimatedDelivery: "2020-01-01" },
+      { receiverPhone: "abc" },
+      { weightKg: -3 },
+    ];
+    for (const extra of bad) {
+      const result = await execute(server, { query: DETAILS_MUTATION, variables: { input: { ...base, ...extra } } });
+      expect(result.errors?.[0]?.extensions?.code).toBe("BAD_USER_INPUT");
+    }
+    await expect(Shipment.countDocuments()).resolves.toBe(0);
+  });
+
+  test("shipments created before these fields existed still load, with nulls", async () => {
+    await seedShipment(); // has none of the new fields
+    const result: any = await execute(server, { query: DETAILS_QUERY, variables: { trackingId: "SHP-TEST0001" } });
+    expect(result.errors).toBeUndefined();
+    expect(result.data.shipment).toEqual({
+      receiverPhone: null,
+      senderName: null,
+      packageType: null,
+      weightKg: null,
+      estimatedDelivery: null,
+    });
+  });
+});

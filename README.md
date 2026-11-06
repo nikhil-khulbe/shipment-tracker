@@ -1,6 +1,6 @@
 # Shipment Tracker
 
-A courier-tracking app (think Delhivery / Blue Dart): anyone can look up a parcel by tracking ID and see its timeline; anyone can open the Admin tab to create shipments and advance their status (no login — it is intentionally open for demo/testing). Built as a full-stack TypeScript monorepo — **GraphQL API + React Native (Expo) app** that runs on Android, iOS and web.
+A courier-tracking app (think Delhivery / Blue Dart): anyone can look up a parcel by tracking ID and see its timeline; admins log in to create shipments and advance their status (login can be switched off with `REQUIRE_ADMIN=false` for an open demo). Built as a full-stack TypeScript monorepo — **GraphQL API + React Native (Expo) app** that runs on Android, iOS and web.
 
 > **Live demo:** _TODO — add Netlify URL after deploy_ · **Android APK:** _TODO — add GitHub Release link_
 > The API runs on a free Render instance and sleeps when idle — the first request can take 30–50 s to wake it.
@@ -24,7 +24,9 @@ _Demo GIF: TODO._
 ## Features
 
 - **Public:** `shipment(trackingId)` query → current status + full timeline.
-- **Admin (open, no login):** `createShipment`, `updateStatus`, and `shipments(status, search, cursor, limit)` — a cursor-paginated list. The `login` and `me` operations still exist in the API but the app no longer uses them.
+- **Admin (JWT login by default):** `createShipment`, `updateStatus`, and `shipments(status, search, cursor, limit)` — a cursor-paginated list. Set `REQUIRE_ADMIN=false` on the API to make them open for demos; the public `authRequired` query tells the app whether to show the login form.
+- **Shipment details (all optional):** sender name, receiver phone, package type, weight, description and an **estimated delivery date**. The Track screen shows "Arriving tomorrow" / "Arriving by Sat, 9 Nov" (red when running late) and "Delivered on ..." once done. Shipments created before these fields existed still work. The receiver's phone is masked (last 4 digits) for everyone except a logged-in admin, because a tracking ID is not a secret.
+- **Abuse protection:** per-IP rate limit on `/graphql` (300 / 15 min) and a much tighter one on `login` (10 / 15 min), plus a query depth limit.
 - **Status state machine:** `CREATED → PICKED_UP → IN_TRANSIT → OUT_FOR_DELIVERY → DELIVERED`, one step forward at a time, `DELIVERED` is terminal. Illegal moves are rejected with `INVALID_STATUS_TRANSITION`.
 - Status history is append-only.
 
@@ -101,7 +103,7 @@ On a physical phone, `localhost` is the phone itself — set `EXPO_PUBLIC_API_UR
 npm test -w api
 ```
 
-Thirteen tests run through `ApolloServer.executeOperation` against an in-memory MongoDB, so schema, context and error formatting are all exercised:
+Sixteen tests run through `ApolloServer.executeOperation` against an in-memory MongoDB, so schema, context and error formatting are all exercised:
 
 1. Public `shipment` query returns full history, and `null` for an unknown ID.
 2. `createShipment` creates a correct initial state.
@@ -111,6 +113,9 @@ Thirteen tests run through `ApolloServer.executeOperation` against an in-memory 
 6. In open mode the admin list needs no login.
 7. The admin list pages through every shipment exactly once (including rows that share a `createdAt`), newest first, and honours the status filter, tracking-ID search and rejects a bad cursor.
 8. `canTransition` over the full 5×5 matrix (pure unit test).
+9. Locked mode (`REQUIRE_ADMIN=true`): `authRequired` is reported, list/create/update reject anonymous callers without changing data, public tracking stays open, a logged-in admin still works.
+10. The query depth limit.
+11. Shipment details: stored, phone masked for anonymous viewers, invalid ETD/phone/weight rejected, old shipments still load.
 
 The first run downloads a MongoDB binary, so it can be slow on a cold machine.
 

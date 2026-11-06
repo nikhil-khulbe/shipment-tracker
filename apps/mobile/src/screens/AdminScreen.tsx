@@ -21,7 +21,16 @@ import { Text, TextInput } from "../components/ui";
 import { feedback } from "../feedback";
 import { STATUS_LABELS } from "../theme/status";
 import { useTheme, type Theme } from "../theme/theme";
-import { SHIPMENT_STATUSES, type Shipment, type ShipmentStatus } from "../types";
+import { etaInDays } from "../eta";
+import { PACKAGE_TYPES, SHIPMENT_STATUSES, type PackageType, type Shipment, type ShipmentStatus } from "../types";
+
+const ETA_OPTIONS = [
+  { days: 1, label: "Tomorrow" },
+  { days: 2, label: "2 days" },
+  { days: 3, label: "3 days" },
+  { days: 5, label: "5 days" },
+  { days: 7, label: "1 week" },
+];
 
 /** The one legal next step for each status; empty means terminal (DELIVERED). */
 const NEXT_STATUS: Record<ShipmentStatus, ShipmentStatus | null> = {
@@ -64,7 +73,7 @@ export function AdminScreen() {
     () =>
       onSessionExpired(() => {
         setHasStoredToken(false);
-        feedback.error("Session expired — please log in again");
+        feedback.error("Session expired â€” please log in again");
       }),
     [],
   );
@@ -235,6 +244,13 @@ function CreateShipmentForm() {
   const [origin, setOrigin] = useState("");
   const [destination, setDestination] = useState("");
   const [receiverName, setReceiverName] = useState("");
+  const [senderName, setSenderName] = useState("");
+  const [receiverPhone, setReceiverPhone] = useState("");
+  const [packageType, setPackageType] = useState<PackageType | null>(null);
+  const [weight, setWeight] = useState("");
+  const [description, setDescription] = useState("");
+  const [etaDays, setEtaDays] = useState<number | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
   const [createShipment, { loading, error }] = useMutation<{ createShipment: Shipment }>(
     CREATE_SHIPMENT_MUTATION,
     { refetchQueries: ["Shipment", "Shipments"] },
@@ -250,8 +266,28 @@ function CreateShipmentForm() {
   }
 
   async function handleSubmit() {
+    // Weight is typed as text; reject junk here rather than send NaN to the API.
+    const weightKg = weight.trim() ? Number(weight.trim()) : null;
+    if (weightKg !== null && (!Number.isFinite(weightKg) || weightKg <= 0)) {
+      setFormError("Weight must be a number greater than 0.");
+      return;
+    }
+    setFormError(null);
+
     const result = await createShipment({
-      variables: { input: { origin: origin.trim(), destination: destination.trim(), receiverName: receiverName.trim() } },
+      variables: {
+        input: {
+          origin: origin.trim(),
+          destination: destination.trim(),
+          receiverName: receiverName.trim(),
+          senderName: senderName.trim() || null,
+          receiverPhone: receiverPhone.trim() || null,
+          packageType,
+          weightKg,
+          description: description.trim() || null,
+          estimatedDelivery: etaDays !== null ? etaInDays(etaDays) : null,
+        },
+      },
     }).catch(() => null);
 
     const created: Shipment | undefined = result?.data?.createShipment;
@@ -262,6 +298,12 @@ function CreateShipmentForm() {
       setOrigin("");
       setDestination("");
       setReceiverName("");
+      setSenderName("");
+      setReceiverPhone("");
+      setPackageType(null);
+      setWeight("");
+      setDescription("");
+      setEtaDays(null);
     }
   }
 
@@ -278,7 +320,67 @@ function CreateShipmentForm() {
       <Text style={styles.label}>Receiver name</Text>
       <TextInput style={styles.input} value={receiverName} onChangeText={setReceiverName} placeholder="Asha Rao" />
 
-      {error && <Text style={styles.error}>{error.message}</Text>}
+      <Text style={styles.label}>Receiver phone (optional)</Text>
+      <TextInput
+        style={styles.input}
+        keyboardType="phone-pad"
+        value={receiverPhone}
+        onChangeText={setReceiverPhone}
+        placeholder="+91 98765 43210"
+      />
+
+      <Text style={styles.label}>Sender name (optional)</Text>
+      <TextInput style={styles.input} value={senderName} onChangeText={setSenderName} placeholder="Ravi Kumar" />
+
+      <Text style={styles.label}>Package type (optional)</Text>
+      <View style={styles.chipRow}>
+        {PACKAGE_TYPES.map((type) => {
+          const selected = packageType === type;
+          return (
+            <Pressable
+              key={type}
+              style={[styles.chip, selected && styles.chipNext]}
+              onPress={() => setPackageType(selected ? null : type)}
+              accessibilityRole="button"
+              accessibilityState={{ selected }}
+            >
+              <Text style={[styles.chipText, selected && styles.chipTextNext]}>{type}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
+
+      <Text style={styles.label}>Weight in kg (optional)</Text>
+      <TextInput
+        style={styles.input}
+        keyboardType="decimal-pad"
+        value={weight}
+        onChangeText={setWeight}
+        placeholder="2.5"
+      />
+
+      <Text style={styles.label}>Description (optional)</Text>
+      <TextInput style={styles.input} value={description} onChangeText={setDescription} placeholder="Glassware" />
+
+      <Text style={styles.label}>Expected delivery (optional)</Text>
+      <View style={styles.chipRow}>
+        {ETA_OPTIONS.map(({ days, label }) => {
+          const selected = etaDays === days;
+          return (
+            <Pressable
+              key={days}
+              style={[styles.chip, selected && styles.chipNext]}
+              onPress={() => setEtaDays(selected ? null : days)}
+              accessibilityRole="button"
+              accessibilityState={{ selected }}
+            >
+              <Text style={[styles.chipText, selected && styles.chipTextNext]}>{label}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
+
+      {(formError || error) && <Text style={styles.error}>{formError ?? error?.message}</Text>}
 
       <Pressable style={styles.primaryButton} onPress={handleSubmit} disabled={loading}>
         {loading ? <ActivityIndicator color={t.onPrimary} /> : <Text style={styles.primaryButtonText}>Create shipment</Text>}

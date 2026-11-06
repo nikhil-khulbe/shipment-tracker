@@ -1,4 +1,5 @@
 import { gql } from "@apollo/client";
+import { SHIPMENT_FIELDS } from "./queries";
 
 export const LOGIN_MUTATION = gql`
   mutation Login($email: String!, $password: String!) {
@@ -11,39 +12,19 @@ export const LOGIN_MUTATION = gql`
 `;
 
 export const CREATE_SHIPMENT_MUTATION = gql`
+  ${SHIPMENT_FIELDS}
   mutation CreateShipment($input: CreateShipmentInput!) {
     createShipment(input: $input) {
-      id
-      trackingId
-      origin
-      destination
-      receiverName
-      currentStatus
-      history {
-        status
-        location
-        note
-        timestamp
-      }
+      ...ShipmentFields
     }
   }
 `;
 
 export const UPDATE_STATUS_MUTATION = gql`
+  ${SHIPMENT_FIELDS}
   mutation UpdateStatus($input: UpdateStatusInput!) {
     updateStatus(input: $input) {
-      id
-      trackingId
-      origin
-      destination
-      receiverName
-      currentStatus
-      history {
-        status
-        location
-        note
-        timestamp
-      }
+      ...ShipmentFields
     }
   }
 `;

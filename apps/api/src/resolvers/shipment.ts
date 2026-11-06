@@ -3,6 +3,7 @@ import * as shipmentService from "../services/shipmentService.js";
 import { requireAdmin, badUserInput } from "../errors.js";
 import { isShipmentStatus } from "../domain/status.js";
 import { Admin } from "../models/Admin.js";
+import { maskPhone } from "../domain/shipmentDetails.js";
 import { config } from "../config.js";
 
 /** Admin-only gate. A no-op when REQUIRE_ADMIN=false (open demo mode). */
@@ -25,6 +26,12 @@ function serializeShipment(doc: any) {
     origin: doc.origin,
     destination: doc.destination,
     receiverName: doc.receiverName,
+    senderName: doc.senderName ?? null,
+    receiverPhone: doc.receiverPhone ?? null, // masked by Shipment.receiverPhone below
+    packageType: doc.packageType ?? null,
+    weightKg: doc.weightKg ?? null,
+    description: doc.description ?? null,
+    estimatedDelivery: doc.estimatedDelivery ? new Date(doc.estimatedDelivery).toISOString() : null,
     currentStatus: doc.currentStatus,
     history: doc.history.map((event: any) => ({
       status: event.status,
@@ -36,6 +43,12 @@ function serializeShipment(doc: any) {
     updatedAt: new Date(doc.updatedAt).toISOString(),
   };
 }
+
+/** Field-level resolvers for the Shipment type. */
+export const shipmentFields = {
+  receiverPhone: (parent: { receiverPhone: string | null }, _args: unknown, context: GraphQLContext) =>
+    context.admin ? parent.receiverPhone : maskPhone(parent.receiverPhone),
+};
 
 export const shipmentQueries = {
   authRequired: () => config.requireAdmin,

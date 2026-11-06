@@ -1,5 +1,6 @@
 import { Schema, model, type InferSchemaType } from "mongoose";
 import { SHIPMENT_STATUSES } from "../domain/status.js";
+import { PACKAGE_TYPES } from "../domain/shipmentDetails.js";
 
 const statusEventSchema = new Schema(
   {
@@ -58,6 +59,14 @@ const shipmentSchema = new Schema(
       minlength: 2,
       maxlength: 80,
     },
+    // Optional details. All optional so shipments created before these
+    // existed stay valid without a migration.
+    senderName: { type: String, trim: true, maxlength: 80 },
+    receiverPhone: { type: String, trim: true, match: /^[+0-9][0-9 ()-]{5,18}$/ },
+    packageType: { type: String, enum: PACKAGE_TYPES },
+    weightKg: { type: Number, min: 0.01, max: 1000 },
+    description: { type: String, trim: true, maxlength: 200 },
+    estimatedDelivery: { type: Date },
     currentStatus: {
       type: String,
       enum: SHIPMENT_STATUSES,
