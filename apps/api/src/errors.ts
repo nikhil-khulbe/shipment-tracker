@@ -1,4 +1,5 @@
 import { GraphQLError } from "graphql";
+import { Admin } from "./models/Admin.js";
 
 /**
  * One factory per error case (see PLAN.md §3 for the full table), each
@@ -44,21 +45,47 @@ export function duplicateTrackingId(message: string): GraphQLError {
   });
 }
 
+export type Role = "ADMIN" | "DRIVER";
+export type AuthedAdmin = AdminContext & { role: Role };
+
+/**
+ * The caller's role, looked up in the database (never trusted from the JWT, so
+ * deleting or demoting an account takes effect immediately). Memoised per
+ * request: the context object is created once per request, so a field that
+ * is resolved 20 times costs one query.
+ */
+const roleCache = new WeakMap<object, Promise<Role | null>>();
+
+export function currentRole(context: { admin: AdminContext | null }): Promise<Role | null> {
+  if (!context.admin) return Promise.resolve(null);
+  let cached = roleCache.get(context);
+  if (!cached) {
+    cached = Admin.findById(context.admin.id)
+      .lean()
+      .then((doc) => (doc ? ((doc.role as Role | undefined) ?? "ADMIN") : null));
+    roleCache.set(context, cached);
+  }
+  return cached;
+}
+
 /**
  * Throws UNAUTHENTICATED if no admin is attached to the request context,
- * then FORBIDDEN if that admin's account has since been deleted. Every
- * admin-only resolver's first line is `const admin = await requireAdmin(ctx)`.
+ * FORBIDDEN if that account has since been deleted or its role isn't one of
+ * `roles`. Every admin-only resolver's first line goes through this.
  */
 export async function requireAdmin(
   context: { admin: AdminContext | null },
-  AdminModel: { exists: (filter: { _id: string }) => Promise<unknown> },
-): Promise<AdminContext> {
+  roles?: readonly Role[],
+): Promise<AuthedAdmin> {
   if (!context.admin) {
     throw unauthenticated();
   }
-  const stillExists = await AdminModel.exists({ _id: context.admin.id });
-  if (!stillExists) {
+  const role = await currentRole(context);
+  if (!role) {
     throw forbidden();
   }
-  return context.admin;
+  if (roles && !roles.includes(role)) {
+    throw forbidden("Your role is not allowed to do that.");
+  }
+  return { ...context.admin, role };
 }

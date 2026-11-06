@@ -26,6 +26,23 @@ const statusEventSchema = new Schema(
       required: true,
       default: Date.now,
     },
+    // Who made this change (admin email). Null in open demo mode.
+    by: { type: String, trim: true },
+  },
+  { _id: false },
+);
+
+// A record of one edit to the shipment's details (not its status).
+const editSchema = new Schema(
+  {
+    at: { type: Date, required: true, default: Date.now },
+    by: { type: String, trim: true },
+    changes: [
+      new Schema(
+        { field: { type: String, required: true }, from: { type: String }, to: { type: String } },
+        { _id: false },
+      ),
+    ],
   },
   { _id: false },
 );
@@ -67,6 +84,12 @@ const shipmentSchema = new Schema(
     weightKg: { type: Number, min: 0.01, max: 1000 },
     description: { type: String, trim: true, maxlength: 200 },
     estimatedDelivery: { type: Date },
+    createdBy: { type: String, trim: true },
+    // 4-digit code the receiver gives the courier. Only enforced when
+    // admin login is required (see updateStatus).
+    deliveryOtp: { type: String, match: /^\d{4}$/ },
+    deliveredTo: { type: String, trim: true, maxlength: 80 },
+    edits: { type: [editSchema], default: [] },
     currentStatus: {
       type: String,
       enum: SHIPMENT_STATUSES,

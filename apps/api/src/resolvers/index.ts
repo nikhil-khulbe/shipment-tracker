@@ -1,4 +1,4 @@
-import { shipmentQueries, shipmentMutations, shipmentFields } from "./shipment.js";
+import { shipmentQueries, shipmentMutations, shipmentFields, statusEventFields } from "./shipment.js";
 import { authMutations } from "./auth.js";
 
 export const resolvers = {
@@ -6,6 +6,7 @@ export const resolvers = {
     ...shipmentQueries,
   },
   Shipment: shipmentFields,
+  StatusEvent: statusEventFields,
   Mutation: {
     ...authMutations,
     ...shipmentMutations,

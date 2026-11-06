@@ -8,6 +8,13 @@ const adminSchema = new Schema(
       lowercase: true,
       trim: true,
     },
+    // ADMIN can do everything; DRIVER can only list shipments and update their
+    // status. Existing admin rows have no role, which Mongoose reads as ADMIN.
+    role: {
+      type: String,
+      enum: ["ADMIN", "DRIVER"],
+      default: "ADMIN",
+    },
     // select: false keeps the hash out of every query result unless a
     // resolver explicitly asks for it with .select("+passwordHash") —
     // see authService.login for the one place that does.

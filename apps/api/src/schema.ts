@@ -20,11 +20,30 @@ export const typeDefs = /* GraphQL */ `
     OTHER
   }
 
+  enum Role {
+    ADMIN
+    DRIVER
+  }
+
   type StatusEvent {
     status: ShipmentStatus!
     location: String!
     note: String
     timestamp: String!
+    "Who made this change. Visible to logged-in staff only."
+    updatedBy: String
+  }
+
+  type ShipmentChange {
+    field: String!
+    from: String
+    to: String
+  }
+
+  type ShipmentEdit {
+    at: String!
+    by: String
+    changes: [ShipmentChange!]!
   }
 
   type Shipment {
@@ -41,6 +60,14 @@ export const typeDefs = /* GraphQL */ `
     description: String
     "ISO date-time. Null when no estimate was given."
     estimatedDelivery: String
+    "Who received the parcel. Set when it is marked DELIVERED."
+    deliveredTo: String
+    "The 4-digit code the receiver gives the courier. Visible to ADMIN accounts only."
+    deliveryOtp: String
+    "Visible to logged-in staff only."
+    createdBy: String
+    "Log of edits to the shipment's details. Empty unless the caller is logged-in staff."
+    edits: [ShipmentEdit!]!
     currentStatus: ShipmentStatus!
     "The statuses this shipment may move to next. Empty once it is DELIVERED, RETURNED or CANCELLED."
     allowedNextStatuses: [ShipmentStatus!]!
@@ -58,6 +85,43 @@ export const typeDefs = /* GraphQL */ `
   type AdminProfile {
     id: ID!
     email: String!
+    role: Role!
+  }
+
+  type StatusCount {
+    status: ShipmentStatus!
+    count: Int!
+  }
+
+  type DayCount {
+    "UTC calendar day, YYYY-MM-DD."
+    date: String!
+    count: Int!
+  }
+
+  type DashboardStats {
+    total: Int!
+    byStatus: [StatusCount!]!
+    createdPerDay: [DayCount!]!
+    "Unfinished shipments past their estimated delivery date."
+    overdueCount: Int!
+    "Unfinished shipments not touched for a while, oldest first."
+    stuck: [Shipment!]!
+  }
+
+  type BulkStatusResult {
+    trackingId: String!
+    ok: Boolean!
+    error: String
+    status: ShipmentStatus
+  }
+
+  type ImportResult {
+    "1-based position of the row in the submitted list."
+    row: Int!
+    ok: Boolean!
+    error: String
+    trackingId: String
   }
 
   type ShipmentPage {
@@ -80,11 +144,28 @@ export const typeDefs = /* GraphQL */ `
     estimatedDelivery: String
   }
 
+  "Fields left out are unchanged; null or an empty string clears an optional field."
+  input EditShipmentInput {
+    origin: String
+    destination: String
+    receiverName: String
+    senderName: String
+    receiverPhone: String
+    packageType: PackageType
+    weightKg: Float
+    description: String
+    estimatedDelivery: String
+  }
+
   input UpdateStatusInput {
     trackingId: String!
     status: ShipmentStatus!
     location: String!
     note: String
+    "Required when the status is DELIVERED."
+    deliveredTo: String
+    "The receiver's delivery code; checked for DELIVERED when admin login is required."
+    otp: String
   }
 
   type Query {
@@ -97,6 +178,9 @@ export const typeDefs = /* GraphQL */ `
     "Admin only. Newest-first, cursor-paginated list; optionally filtered by status and/or a tracking-ID prefix."
     shipments(status: ShipmentStatus, search: String, cursor: String, limit: Int = 20): ShipmentPage!
 
+    "ADMIN only. Counts, a 7-day creation chart and the shipments that look stuck."
+    dashboardStats(stuckAfterHours: Int = 72): DashboardStats!
+
     "Admin only. Confirms the bearer token is still valid."
     me: AdminProfile
   }
@@ -105,5 +189,14 @@ export const typeDefs = /* GraphQL */ `
     login(email: String!, password: String!): AuthPayload!
     createShipment(input: CreateShipmentInput!): Shipment!
     updateStatus(input: UpdateStatusInput!): Shipment!
+
+    "ADMIN only. Edit a shipment's details; every change is logged."
+    editShipment(trackingId: String!, input: EditShipmentInput!): Shipment!
+
+    "Move up to 50 shipments to the same status. Not available for DELIVERED."
+    bulkUpdateStatus(trackingIds: [String!]!, status: ShipmentStatus!, location: String!, note: String): [BulkStatusResult!]!
+
+    "ADMIN only. Create up to 200 shipments at once (e.g. from a CSV)."
+    importShipments(inputs: [CreateShipmentInput!]!): [ImportResult!]!
   }
 `;
