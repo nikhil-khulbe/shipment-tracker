@@ -39,6 +39,7 @@ function snapshot(): string {
   scratch.restore(cache.extract());
   scratch.evict({ fieldName: "shipments" });
   scratch.evict({ fieldName: "me" });
+  scratch.evict({ fieldName: "authRequired" }); // never trust a stale "no login needed" from disk
   scratch.gc();
   return JSON.stringify(scratch.extract());
 }

@@ -12,6 +12,8 @@ import { resolvers } from "./resolvers/index.js";
 import { buildContext, type GraphQLContext } from "./context.js";
 import { Shipment } from "./models/Shipment.js";
 import { Admin } from "./models/Admin.js";
+import { depthLimit } from "./depthLimit.js";
+import { apiLimiter, loginLimiter } from "./rateLimit.js";
 
 async function main() {
   await mongoose.connect(config.mongodbUri);
@@ -26,6 +28,7 @@ async function main() {
   const server = new ApolloServer<GraphQLContext>({
     typeDefs,
     resolvers,
+    validationRules: [depthLimit(8)],
     introspection: !config.isProduction,
     plugins: config.isProduction ? [ApolloServerPluginLandingPageDisabled()] : [],
     formatError: (formattedError, error): GraphQLFormattedError => {
@@ -51,6 +54,9 @@ async function main() {
   await server.start();
 
   const app = express();
+  // Render (and most hosts) sit behind a proxy; without this every client
+  // would share the proxy's IP and one noisy user would rate-limit everyone.
+  app.set("trust proxy", 1);
   app.use(
     cors({
       origin: config.corsOrigins.length > 0 ? config.corsOrigins : true,
@@ -62,6 +68,7 @@ async function main() {
     res.json({ ok: true });
   });
 
+  app.use("/graphql", apiLimiter, loginLimiter);
   app.use("/graphql", expressMiddleware(server, { context: buildContext }));
 
   app.listen(config.port, () => {

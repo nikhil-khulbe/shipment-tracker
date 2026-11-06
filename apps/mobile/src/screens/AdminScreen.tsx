@@ -9,9 +9,13 @@ import {
   View,
 } from "react-native";
 import * as Clipboard from "expo-clipboard";
-import { useLazyQuery, useMutation } from "@apollo/client/react";
-import { SHIPMENT_QUERY } from "../graphql/queries";
-import { CREATE_SHIPMENT_MUTATION, UPDATE_STATUS_MUTATION } from "../graphql/mutations";
+import { useLazyQuery, useMutation, useQuery } from "@apollo/client/react";
+import { AUTH_REQUIRED_QUERY, ME_QUERY, SHIPMENT_QUERY } from "../graphql/queries";
+import { CREATE_SHIPMENT_MUTATION, LOGIN_MUTATION, UPDATE_STATUS_MUTATION } from "../graphql/mutations";
+import { getToken, saveToken, clearToken } from "../auth/token";
+import { onSessionExpired } from "../auth/session";
+import { apolloClient } from "../apollo";
+import { clearPersistedCache } from "../cachePersist";
 import { ShipmentList } from "../components/ShipmentList";
 import { Text, TextInput } from "../components/ui";
 import { feedback } from "../feedback";
@@ -35,7 +39,92 @@ const SECTIONS: { key: Section; label: string }[] = [
   { key: "update", label: "Update" },
 ];
 
+/**
+ * Gate in front of the admin dashboard. The server decides whether a login
+ * is needed (`authRequired`): in open demo mode the dashboard shows
+ * straight away, otherwise a stored, still-valid admin token is required.
+ */
 export function AdminScreen() {
+  const t = useTheme();
+  const styles = useMemo(() => makeStyles(t), [t]);
+  const [checkedStorage, setCheckedStorage] = useState(false);
+  const [hasStoredToken, setHasStoredToken] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      const token = await getToken();
+      setHasStoredToken(Boolean(token));
+      setCheckedStorage(true);
+    })();
+  }, []);
+
+  // The Apollo error link fires this the moment any request comes back
+  // UNAUTHENTICATED (expired / tampered token, deleted admin).
+  useEffect(
+    () =>
+      onSessionExpired(() => {
+        setHasStoredToken(false);
+        feedback.error("Session expired — please log in again");
+      }),
+    [],
+  );
+
+  const {
+    data: authData,
+    loading: authLoading,
+    refetch: refetchAuthRequired,
+  } = useQuery<{ authRequired: boolean }>(AUTH_REQUIRED_QUERY, { fetchPolicy: "cache-and-network" });
+  // Unknown (server unreachable, nothing cached) is treated as "required":
+  // showing a login form is safe; showing admin tools would not be.
+  const authRequired = authData?.authRequired ?? true;
+
+  const {
+    data: meData,
+    loading: meLoading,
+    error: meError,
+  } = useQuery<{ me: { id: string; email: string } | null }>(ME_QUERY, {
+    skip: !checkedStorage || !hasStoredToken || !authRequired,
+    fetchPolicy: "network-only",
+  });
+
+  async function handleLogout() {
+    await clearToken();
+    await apolloClient.resetStore();
+    await clearPersistedCache();
+    setHasStoredToken(false);
+  }
+
+  if (!checkedStorage || (authLoading && !authData) || (authRequired && hasStoredToken && meLoading)) {
+    return (
+      <View style={styles.centered}>
+        <ActivityIndicator color={t.text} />
+      </View>
+    );
+  }
+
+  if (!authData) {
+    return (
+      <View style={styles.centered}>
+        <Text style={styles.subtitle}>Can't reach the server.</Text>
+        <Pressable onPress={() => refetchAuthRequired().catch(() => null)}>
+          <Text style={styles.logout}>Try again</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
+  if (authRequired) {
+    const isLoggedIn = hasStoredToken && !meError && meData?.me != null;
+    if (!isLoggedIn) {
+      return <LoginForm onLoggedIn={() => setHasStoredToken(true)} />;
+    }
+    return <AdminDashboard email={meData?.me?.email} onLogout={handleLogout} />;
+  }
+
+  return <AdminDashboard />;
+}
+
+function AdminDashboard({ email, onLogout }: { email?: string; onLogout?: () => void }) {
   const t = useTheme();
   const styles = useMemo(() => makeStyles(t), [t]);
   const [section, setSection] = useState<Section>("list");
@@ -51,8 +140,13 @@ export function AdminScreen() {
       <View style={styles.adminHeader}>
         <View style={styles.header}>
           <Text style={styles.title}>Admin</Text>
+          {onLogout && (
+            <Pressable onPress={onLogout}>
+              <Text style={styles.logout}>Log out</Text>
+            </Pressable>
+          )}
         </View>
-        <Text style={styles.signedInAs}>Create shipments and update their status.</Text>
+        <Text style={styles.signedInAs}>{email ?? "Create shipments and update their status."}</Text>
 
         <View style={styles.segments}>
           {SECTIONS.map(({ key, label }) => (
@@ -78,6 +172,59 @@ export function AdminScreen() {
           {section === "create" ? <CreateShipmentForm /> : <UpdateStatusForm initialTrackingId={selectedId} />}
         </ScrollView>
       )}
+    </KeyboardAvoidingView>
+  );
+}
+
+function LoginForm({ onLoggedIn }: { onLoggedIn: () => void }) {
+  const t = useTheme();
+  const styles = useMemo(() => makeStyles(t), [t]);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [login, { loading, error }] = useMutation<{
+    login: { token: string; email: string; expiresIn: number };
+  }>(LOGIN_MUTATION);
+
+  async function handleSubmit() {
+    const result = await login({ variables: { email: email.trim(), password } }).catch(() => null);
+    const token = result?.data?.login?.token;
+    if (token) {
+      await saveToken(token);
+      onLoggedIn();
+    }
+  }
+
+  return (
+    <KeyboardAvoidingView style={styles.flex} behavior="padding">
+      <View style={styles.loginContainer}>
+        <Text style={styles.title}>Admin login</Text>
+        <Text style={styles.subtitle}>Sign in to create shipments and update their status.</Text>
+
+        <Text style={styles.label}>Email</Text>
+        <TextInput
+          style={styles.input}
+          autoCapitalize="none"
+          autoCorrect={false}
+          keyboardType="email-address"
+          value={email}
+          onChangeText={setEmail}
+        />
+
+        <Text style={styles.label}>Password</Text>
+        <TextInput
+          style={styles.input}
+          secureTextEntry
+          value={password}
+          onChangeText={setPassword}
+          onSubmitEditing={handleSubmit}
+        />
+
+        {error && <Text style={styles.error}>{error.message}</Text>}
+
+        <Pressable style={styles.primaryButton} onPress={handleSubmit} disabled={loading}>
+          {loading ? <ActivityIndicator color={t.onPrimary} /> : <Text style={styles.primaryButtonText}>Log in</Text>}
+        </Pressable>
+      </View>
     </KeyboardAvoidingView>
   );
 }

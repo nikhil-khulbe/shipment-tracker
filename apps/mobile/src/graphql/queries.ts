@@ -19,6 +19,12 @@ export const SHIPMENT_QUERY = gql`
   }
 `;
 
+export const AUTH_REQUIRED_QUERY = gql`
+  query AuthRequired {
+    authRequired
+  }
+`;
+
 export const ME_QUERY = gql`
   query Me {
     me {

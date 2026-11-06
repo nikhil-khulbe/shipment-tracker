@@ -2,9 +2,10 @@ import { ApolloServer } from "@apollo/server";
 import { typeDefs } from "../schema.js";
 import { resolvers } from "../resolvers/index.js";
 import type { GraphQLContext } from "../context.js";
+import { depthLimit } from "../depthLimit.js";
 
 export function createTestServer(): ApolloServer<GraphQLContext> {
-  return new ApolloServer<GraphQLContext>({ typeDefs, resolvers });
+  return new ApolloServer<GraphQLContext>({ typeDefs, resolvers, validationRules: [depthLimit(8)] });
 }
 
 type GraphQLResponseBody =

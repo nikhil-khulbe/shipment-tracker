@@ -58,6 +58,9 @@ export const typeDefs = /* GraphQL */ `
   }
 
   type Query {
+    "Public. Whether admin operations need a login; the app uses it to decide whether to show the login form."
+    authRequired: Boolean!
+
     "Public. Returns null when no shipment matches the given tracking ID."
     shipment(trackingId: String!): Shipment
 

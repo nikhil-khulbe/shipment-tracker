@@ -83,6 +83,8 @@ On a physical phone, `localhost` is the phone itself — set `EXPO_PUBLIC_API_UR
 | `MONGODB_URI` | Mongo connection string (required) |
 | `JWT_SECRET` | 32+ random bytes (required) — `openssl rand -base64 32` |
 | `JWT_EXPIRES_IN` | token lifetime, default `8h` |
+| `REQUIRE_ADMIN` | default `true`. `false` = open demo mode, no login needed for admin operations |
+| `RATE_LIMIT_MAX` / `LOGIN_RATE_LIMIT_MAX` | per-IP requests per 15 min on `/graphql` (default 300) and login attempts (default 10) |
 | `CORS_ORIGIN` | comma-separated allowed browser origins (needed for the web build) |
 | `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` | only read by `npm run seed` |
 
@@ -99,14 +101,14 @@ On a physical phone, `localhost` is the phone itself — set `EXPO_PUBLIC_API_UR
 npm test -w api
 ```
 
-Eight tests run through `ApolloServer.executeOperation` against an in-memory MongoDB, so schema, context and error formatting are all exercised:
+Thirteen tests run through `ApolloServer.executeOperation` against an in-memory MongoDB, so schema, context and error formatting are all exercised:
 
 1. Public `shipment` query returns full history, and `null` for an unknown ID.
-2. `createShipment` is open to anyone and creates a correct initial state.
+2. `createShipment` creates a correct initial state.
 3. `updateStatus` advances legally and appends to history.
 4. `updateStatus` rejects an illegal transition **and leaves the document unchanged**.
 5. `login` succeeds, and fails with an identical error for wrong password vs. unknown email.
-6. The admin list is open to anyone.
+6. In open mode the admin list needs no login.
 7. The admin list pages through every shipment exactly once (including rows that share a `createdAt`), newest first, and honours the status filter, tracking-ID search and rejects a bad cursor.
 8. `canTransition` over the full 5×5 matrix (pure unit test).
 
@@ -140,7 +142,8 @@ The first run downloads a MongoDB binary, so it can be slow on a cold machine.
 - JWT in `localStorage` on web; an httpOnly cookie would be better there but doesn't suit a shared native client.
 - Polling interval is fixed; the API would need subscriptions for true push.
 - The offline banner and haptics are only verified on web/emulated paths so far; check on a physical device.
-- Next: GraphQL subscriptions for live status, rate limiting on `login`, graphql-codegen for shared types, CI running the tests, structured logging.
+- Next: GraphQL subscriptions for live status, graphql-codegen for shared types, structured logging.
+- CI (`.github/workflows/ci.yml`) typechecks both apps and runs the API tests on every push.
 
 ## Deployment (summary)
 

@@ -3,6 +3,14 @@ import * as shipmentService from "../services/shipmentService.js";
 import { requireAdmin, badUserInput } from "../errors.js";
 import { isShipmentStatus } from "../domain/status.js";
 import { Admin } from "../models/Admin.js";
+import { config } from "../config.js";
+
+/** Admin-only gate. A no-op when REQUIRE_ADMIN=false (open demo mode). */
+async function guardAdmin(context: GraphQLContext): Promise<void> {
+  if (config.requireAdmin) {
+    await requireAdmin(context, Admin);
+  }
+}
 
 /**
  * Mongoose gives back `_id` (an ObjectId) and Date objects; GraphQL's
@@ -30,6 +38,8 @@ function serializeShipment(doc: any) {
 }
 
 export const shipmentQueries = {
+  authRequired: () => config.requireAdmin,
+
   shipment: async (_parent: unknown, args: { trackingId: string }) => {
     const doc = await shipmentService.findByTrackingId(args.trackingId);
     return doc ? serializeShipment(doc) : null;
@@ -38,7 +48,9 @@ export const shipmentQueries = {
   shipments: async (
     _parent: unknown,
     args: shipmentService.ListShipmentsInput,
+    context: GraphQLContext,
   ) => {
+    await guardAdmin(context);
     const page = await shipmentService.listShipments(args);
     return { items: page.items.map(serializeShipment), nextCursor: page.nextCursor };
   },
@@ -53,7 +65,9 @@ export const shipmentMutations = {
   createShipment: async (
     _parent: unknown,
     args: { input: shipmentService.CreateShipmentInput },
+    context: GraphQLContext,
   ) => {
+    await guardAdmin(context);
     const doc = await shipmentService.createShipment(args.input);
     return serializeShipment(doc);
   },
@@ -61,7 +75,9 @@ export const shipmentMutations = {
   updateStatus: async (
     _parent: unknown,
     args: { input: { trackingId: string; status: string; location: string; note?: string | null } },
+    context: GraphQLContext,
   ) => {
+    await guardAdmin(context);
     if (!isShipmentStatus(args.input.status)) {
       throw badUserInput(`"${args.input.status}" is not a valid shipment status.`);
     }

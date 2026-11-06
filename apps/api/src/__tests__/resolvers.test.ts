@@ -8,6 +8,7 @@ import { hashPassword } from "../services/authService.js";
 import { canTransition, SHIPMENT_STATUSES, type ShipmentStatus } from "../domain/status.js";
 import type { ApolloServer } from "@apollo/server";
 import type { GraphQLContext } from "../context.js";
+import { config } from "../config.js";
 
 let server: ApolloServer<GraphQLContext>;
 
@@ -317,5 +318,78 @@ describe("canTransition (pure unit test, no DB)", () => {
         expect(canTransition(from as ShipmentStatus, to as ShipmentStatus)).toBe(isTheOneLegalStep);
       }
     }
+  });
+});
+
+describe("locked mode (REQUIRE_ADMIN=true)", () => {
+  beforeAll(() => {
+    config.requireAdmin = true;
+  });
+  afterAll(() => {
+    config.requireAdmin = false;
+  });
+
+  test("authRequired reports true, and is readable without logging in", async () => {
+    const result = await execute(server, { query: "{ authRequired }", admin: null });
+    expect(result.errors).toBeUndefined();
+    expect(result.data).toEqual({ authRequired: true });
+  });
+
+  test("list, create and update all reject anonymous callers and change nothing", async () => {
+    await seedShipment();
+
+    const list = await execute(server, { query: SHIPMENTS_QUERY, admin: null });
+    expect(list.errors?.[0]?.extensions?.code).toBe("UNAUTHENTICATED");
+
+    const create = await execute(server, {
+      query: CREATE_SHIPMENT_MUTATION,
+      variables: { input: { origin: "Delhi", destination: "Pune", receiverName: "Asha Rao" } },
+      admin: null,
+    });
+    expect(create.errors?.[0]?.extensions?.code).toBe("UNAUTHENTICATED");
+    await expect(Shipment.countDocuments()).resolves.toBe(1);
+
+    const update = await execute(server, {
+      query: UPDATE_STATUS_MUTATION,
+      variables: { input: { trackingId: "SHP-TEST0001", status: "IN_TRANSIT", location: "Nagpur" } },
+      admin: null,
+    });
+    expect(update.errors?.[0]?.extensions?.code).toBe("UNAUTHENTICATED");
+    const unchanged = await Shipment.findOne({ trackingId: "SHP-TEST0001" });
+    expect(unchanged?.currentStatus).toBe("PICKED_UP");
+  });
+
+  test("the public tracking lookup stays open", async () => {
+    await seedShipment();
+    const result = await execute(server, { query: SHIPMENT_QUERY, variables: { trackingId: "SHP-TEST0001" }, admin: null });
+    expect(result.errors).toBeUndefined();
+    expect((result.data as any).shipment.trackingId).toBe("SHP-TEST0001");
+  });
+
+  test("a logged-in admin can still do everything", async () => {
+    const admin = await seedAdmin();
+    const created = await execute(server, {
+      query: CREATE_SHIPMENT_MUTATION,
+      variables: { input: { origin: "Delhi", destination: "Pune", receiverName: "Asha Rao" } },
+      admin,
+    });
+    expect(created.errors).toBeUndefined();
+  });
+});
+
+describe("query depth limit", () => {
+  test("rejects absurdly nested selections", async () => {
+    // Build a 12-deep selection using inline fragments is cheap; use nested fields on a valid path.
+    const deep = "{ shipment(trackingId: \"X\") { history { status } } }";
+    const ok = await execute(server, { query: deep });
+    expect(ok.errors).toBeUndefined();
+
+    // Depth counting is exercised directly against the rule, since the schema has no recursive type.
+    const { parse, validate, buildSchema } = await import("graphql");
+    const { depthLimit } = await import("../depthLimit.js");
+    const schema = buildSchema("type Query { a: A } type A { a: A, b: Int }");
+    const nest = (n: number): string => (n === 0 ? "b" : `a { ${nest(n - 1)} }`);
+    expect(validate(schema, parse(`{ ${nest(7)} }`), [depthLimit(8)])).toHaveLength(0);
+    expect(validate(schema, parse(`{ ${nest(8)} }`), [depthLimit(8)])).toHaveLength(1);
   });
 });

@@ -8,3 +8,5 @@ process.env.NODE_ENV = "test";
 process.env.MONGODB_URI = "mongodb://127.0.0.1:27017/placeholder-until-memory-server-starts";
 process.env.JWT_SECRET = "test-only-secret-not-for-production-use";
 process.env.JWT_EXPIRES_IN = "1h";
+// Most tests exercise the open (demo) mode; the locked mode flips config.requireAdmin itself.
+process.env.REQUIRE_ADMIN = "false";

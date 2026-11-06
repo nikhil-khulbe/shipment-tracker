@@ -20,6 +20,17 @@ export const config = {
   mongodbUri: required("MONGODB_URI"),
   jwtSecret: required("JWT_SECRET"),
   jwtExpiresIn: process.env.JWT_EXPIRES_IN ?? "8h",
+  /**
+   * When true (the default) the admin operations need a valid admin JWT.
+   * Set REQUIRE_ADMIN=false to run an open demo where anyone can create and
+   * update shipments. Defaulting to locked means forgetting the variable
+   * fails safe.
+   */
+  requireAdmin: process.env.REQUIRE_ADMIN !== "false",
+  /** Requests per IP per window on /graphql. */
+  rateLimitMax: Number(process.env.RATE_LIMIT_MAX ?? 300),
+  /** Login attempts per IP per window. */
+  loginRateLimitMax: Number(process.env.LOGIN_RATE_LIMIT_MAX ?? 10),
   corsOrigins: (process.env.CORS_ORIGIN ?? "")
     .split(",")
     .map((origin) => origin.trim())
