@@ -3,5 +3,13 @@
   "private": true,
   "workspaces": [
     "apps/*"
-  ]
+  ],
+  "devDependencies": {
+    "@graphql-codegen/cli": "^7.4.6",
+    "@graphql-codegen/typescript": "^6.1.2"
+  },
+  "scripts": {
+    "schema": "npm run export-schema -w api",
+    "codegen": "npm run schema && graphql-codegen --config codegen.ts"
+  }
 }

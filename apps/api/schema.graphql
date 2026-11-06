@@ -1,0 +1,193 @@
+enum ShipmentStatus {
+  CREATED
+  PICKED_UP
+  IN_TRANSIT
+  OUT_FOR_DELIVERY
+  DELIVERED
+  DELAYED
+  ON_HOLD
+  DELIVERY_ATTEMPT_FAILED
+  RETURNED
+  CANCELLED
+}
+
+enum PackageType {
+  DOCUMENT
+  PARCEL
+  FRAGILE
+  ELECTRONICS
+  OTHER
+}
+
+enum Role {
+  ADMIN
+  DRIVER
+}
+
+type StatusEvent {
+  status: ShipmentStatus!
+  location: String!
+  note: String
+  timestamp: String!
+  "Who made this change. Visible to logged-in staff only."
+  updatedBy: String
+}
+
+type ShipmentChange {
+  field: String!
+  from: String
+  to: String
+}
+
+type ShipmentEdit {
+  at: String!
+  by: String
+  changes: [ShipmentChange!]!
+}
+
+type Shipment {
+  id: ID!
+  trackingId: String!
+  origin: String!
+  destination: String!
+  receiverName: String!
+  senderName: String
+  "Masked (last 4 digits only) unless the caller is a logged-in admin."
+  receiverPhone: String
+  packageType: PackageType
+  weightKg: Float
+  description: String
+  "ISO date-time. Null when no estimate was given."
+  estimatedDelivery: String
+  "Who received the parcel. Set when it is marked DELIVERED."
+  deliveredTo: String
+  "The 4-digit code the receiver gives the courier. Visible to ADMIN accounts only."
+  deliveryOtp: String
+  "Visible to logged-in staff only."
+  createdBy: String
+  "Log of edits to the shipment's details. Empty unless the caller is logged-in staff."
+  edits: [ShipmentEdit!]!
+  currentStatus: ShipmentStatus!
+  "The statuses this shipment may move to next. Empty once it is DELIVERED, RETURNED or CANCELLED."
+  allowedNextStatuses: [ShipmentStatus!]!
+  history: [StatusEvent!]!
+  createdAt: String!
+  updatedAt: String!
+}
+
+type AuthPayload {
+  token: String!
+  email: String!
+  expiresIn: Int!
+}
+
+type AdminProfile {
+  id: ID!
+  email: String!
+  role: Role!
+}
+
+type StatusCount {
+  status: ShipmentStatus!
+  count: Int!
+}
+
+type DayCount {
+  "UTC calendar day, YYYY-MM-DD."
+  date: String!
+  count: Int!
+}
+
+type DashboardStats {
+  total: Int!
+  byStatus: [StatusCount!]!
+  createdPerDay: [DayCount!]!
+  "Unfinished shipments past their estimated delivery date."
+  overdueCount: Int!
+  "Unfinished shipments not touched for a while, oldest first."
+  stuck: [Shipment!]!
+}
+
+type BulkStatusResult {
+  trackingId: String!
+  ok: Boolean!
+  error: String
+  status: ShipmentStatus
+}
+
+type ImportResult {
+  "1-based position of the row in the submitted list."
+  row: Int!
+  ok: Boolean!
+  error: String
+  trackingId: String
+}
+
+type ShipmentPage {
+  items: [Shipment!]!
+  "Opaque cursor for the next page; null when this is the last page."
+  nextCursor: String
+}
+
+input CreateShipmentInput {
+  origin: String!
+  destination: String!
+  receiverName: String!
+  originLocation: String
+  senderName: String
+  receiverPhone: String
+  packageType: PackageType
+  weightKg: Float
+  description: String
+  "ISO date or date-time; must not be more than a day in the past."
+  estimatedDelivery: String
+}
+
+"Fields left out are unchanged; null or an empty string clears an optional field."
+input EditShipmentInput {
+  origin: String
+  destination: String
+  receiverName: String
+  senderName: String
+  receiverPhone: String
+  packageType: PackageType
+  weightKg: Float
+  description: String
+  estimatedDelivery: String
+}
+
+input UpdateStatusInput {
+  trackingId: String!
+  status: ShipmentStatus!
+  location: String!
+  note: String
+  "Required when the status is DELIVERED."
+  deliveredTo: String
+  "The receiver's delivery code; checked for DELIVERED when admin login is required."
+  otp: String
+}
+
+type Query {
+  "Public. Whether admin operations need a login; the app uses it to decide whether to show the login form."
+  authRequired: Boolean!
+  "Public. Returns null when no shipment matches the given tracking ID."
+  shipment(trackingId: String!): Shipment
+  "Admin only. Newest-first, cursor-paginated list; optionally filtered by status and/or a tracking-ID prefix."
+  shipments(status: ShipmentStatus, search: String, cursor: String, limit: Int = 20): ShipmentPage!
+  "ADMIN only. Counts, a 7-day creation chart and the shipments that look stuck."
+  dashboardStats(stuckAfterHours: Int = 72): DashboardStats!
+  "Admin only. Confirms the bearer token is still valid."
+  me: AdminProfile
+}
+
+type Mutation {
+  login(email: String!, password: String!): AuthPayload!
+  createShipment(input: CreateShipmentInput!): Shipment!
+  updateStatus(input: UpdateStatusInput!): Shipment!
+  "ADMIN only. Edit a shipment's details; every change is logged."
+  editShipment(trackingId: String!, input: EditShipmentInput!): Shipment!
+  "Move up to 50 shipments to the same status. Not available for DELIVERED."
+  bulkUpdateStatus(trackingIds: [String!]!, status: ShipmentStatus!, location: String!, note: String): [BulkStatusResult!]!
+  "ADMIN only. Create up to 200 shipments at once (e.g. from a CSV)."
+  importShipments(inputs: [CreateShipmentInput!]!): [ImportResult!]!
+}

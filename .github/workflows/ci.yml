@@ -15,6 +15,10 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Generated types are up to date
+        run: |
+          npm run codegen
+          git diff --exit-code apps/api/schema.graphql apps/mobile/src/generated
       - name: Typecheck API
         run: npx tsc --noEmit -p apps/api
       - name: Typecheck app
