@@ -6,6 +6,7 @@ import { MAX_SAVED, toggleSaved } from "../savedShipments";
 import { shipmentProgress } from "../theme/status";
 import { commonNextStatuses } from "../components/ShipmentList";
 import { sinceLabel } from "../components/admin/DashboardPanel";
+import { auditFileName } from "../exportAudit";
 import type { StatusEvent } from "../types";
 
 const event = (status: StatusEvent["status"], note: string | null = null, timestamp = "2026-11-06T10:00:00.000Z"): StatusEvent => ({
@@ -206,5 +207,11 @@ describe("sinceLabel", () => {
     expect(sinceLabel("2026-11-05T00:00:00Z", now)).toBe("36h");
     expect(sinceLabel("2026-11-01T12:00:00Z", now)).toBe("5d");
     expect(sinceLabel("2026-11-07T12:00:00Z", now)).toBe("0h"); // a clock-skewed future time never goes negative
+  });
+});
+
+describe("auditFileName", () => {
+  test("is dated so repeated exports don't overwrite each other", () => {
+    expect(auditFileName(new Date("2026-11-11T08:30:00Z"))).toBe("audit-log-2026-11-11.csv");
   });
 });

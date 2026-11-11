@@ -36,6 +36,7 @@ _Demo GIF: TODO._
 - **Dashboard:** counts by status, shipments created per day, and the ones that need attention (delayed, on hold, failed attempt, or past their estimate).
 - **Bulk update:** select up to 50 shipments and move them to the same status in one go; each is checked individually and the result lists what failed and why.
 - **CSV import:** paste or upload a CSV (up to 200 rows). Good rows are created, bad rows are reported with their line number.
+- **Audit export:** admins can download the whole audit trail (every status event and detail edit, with who and when, oldest first) as a CSV from the dashboard. Built on the server so quoting is right, and cells starting with `=`, `+`, `-` or `@` are defused against spreadsheet formula injection. Capped at 5000 shipments per export.
 - **Slack/Discord alerts:** when a shipment becomes `DELAYED`, `ON_HOLD` or `DELIVERY_ATTEMPT_FAILED`, a message with the tracking ID, route, location, reason and who made the change is posted to a webhook. It is fire-and-forget with a 5 s timeout, so a down webhook never fails a status update, and it never includes the receiver's name, phone or delivery code.
 - **QR labels and scanner:** print a shipping label with a QR code of the tracking link; staff can scan it with the phone camera (native only) to load the shipment.
 
@@ -121,11 +122,11 @@ On a physical phone, `localhost` is the phone itself — set `EXPO_PUBLIC_API_UR
 ## Tests
 
 ```bash
-npm test -w api      # 37 tests
-npm test -w mobile   # 47 tests
+npm test -w api      # 56 tests
+npm test -w mobile   # 48 tests
 ```
 
-**API (37)** run through `ApolloServer.executeOperation` against an in-memory MongoDB, so schema, context and error formatting are all exercised. They cover:
+**API (56)** run through `ApolloServer.executeOperation` against an in-memory MongoDB, so schema, context and error formatting are all exercised. They cover:
 
 - Public lookup (full history, `null` for an unknown ID) and the `createShipment` initial state.
 - Status updates: legal moves append to history; an illegal move is rejected **and leaves the document unchanged**; `canTransition` is checked over the whole matrix, including the exception rules (reason required, resume targets, terminal states).
@@ -136,7 +137,7 @@ npm test -w mobile   # 47 tests
 - Proof of delivery (recipient name, right code, wrong attempt changes nothing), the audit trail, `editShipment` (partial changes, clearing fields, no-op edits not logged), `dashboardStats`, `bulkUpdateStatus` (50 max, duplicates ignored, per-row results), `importShipments` (per-row errors, 200 max).
 - The query depth limit. (The per-IP rate limits sit in Express, outside Apollo, so they are not in the automated suite; I checked them by hand against a running server, where the 11th login attempt returned 429.)
 
-**App (47)** run with jest-expo and Testing Library: ETA wording, progress, CSV parsing (quotes, BOM, bad rows by line number), QR generation, scan-text parsing, the saved list, bulk-selection logic, the main components, and the i18n catalogs (same keys and `{placeholders}` in both languages, switching language re-renders, the choice is remembered).
+**App (48)** run with jest-expo and Testing Library: ETA wording, progress, CSV parsing (quotes, BOM, bad rows by line number), QR generation, scan-text parsing, the saved list, bulk-selection logic, the main components, and the i18n catalogs (same keys and `{placeholders}` in both languages, switching language re-renders, the choice is remembered).
 
 The first API run downloads a MongoDB binary, so it can be slow on a cold machine. CI runs both suites, both typechecks, and fails if the generated GraphQL types are out of date.
 

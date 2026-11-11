@@ -109,6 +109,15 @@ export const typeDefs = /* GraphQL */ `
     stuck: [Shipment!]!
   }
 
+  type AuditExport {
+    "CSV text: one row per status event and per changed field, oldest first."
+    csv: String!
+    "Number of data rows (not counting the header)."
+    rows: Int!
+    "True when the shipment cap was hit, so older activity may be missing. Narrow the date range."
+    truncated: Boolean!
+  }
+
   type BulkStatusResult {
     trackingId: String!
     ok: Boolean!
@@ -180,6 +189,9 @@ export const typeDefs = /* GraphQL */ `
 
     "ADMIN only. Counts, a 7-day creation chart and the shipments that look stuck."
     dashboardStats(stuckAfterHours: Int = 72): DashboardStats!
+
+    "ADMIN only. The audit trail (status events and detail edits) as CSV, optionally within a date range (ISO date or date-time)."
+    auditExport(from: String, to: String): AuditExport!
 
     "Admin only. Confirms the bearer token is still valid."
     me: AdminProfile

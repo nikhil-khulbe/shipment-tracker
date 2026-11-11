@@ -104,6 +104,11 @@ export const shipmentQueries = {
     return { ...stats, stuck: stats.stuck.map(serializeShipment) };
   },
 
+  auditExport: async (_parent: unknown, args: { from?: string | null; to?: string | null }, context: GraphQLContext) => {
+    await guard(context, ADMIN_ONLY);
+    return shipmentService.auditExport(args);
+  },
+
   me: async (_parent: unknown, _args: unknown, context: GraphQLContext) => {
     const admin = await requireAdmin(context);
     return { id: admin.id, email: admin.email, role: admin.role };

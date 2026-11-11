@@ -88,6 +88,16 @@ export const DASHBOARD_QUERY = gql`
   }
 `;
 
+export const AUDIT_EXPORT_QUERY = gql`
+  query AuditExport($from: String, $to: String) {
+    auditExport(from: $from, to: $to) {
+      csv
+      rows
+      truncated
+    }
+  }
+`;
+
 export const SHIPMENTS_QUERY = gql`
   query Shipments($status: ShipmentStatus, $search: String, $cursor: String, $limit: Int) {
     shipments(status: $status, search: $search, cursor: $cursor, limit: $limit) {

@@ -7,6 +7,7 @@ import { parseEstimatedDelivery, type PackageType } from "../domain/shipmentDeta
 import { config } from "../config.js";
 import { badUserInput, invalidStatusTransition, notFound } from "../errors.js";
 import { notifyStatusChange } from "./notifier.js";
+import { auditRowsFor, buildAuditCsv } from "../domain/auditExport.js";
 
 const MAX_TRACKING_ID_ATTEMPTS = 3;
 
@@ -411,6 +412,48 @@ export async function importShipments(inputs: CreateShipmentInput[], actor?: str
     }
   }
   return results;
+}
+
+// ---------------------------------------------------------------------------
+// Audit export
+// ---------------------------------------------------------------------------
+
+export const MAX_EXPORT_SHIPMENTS = 5000;
+
+/** Parses an ISO bound; a bare date as `to` means the end of that UTC day. */
+function parseBound(raw: string | null | undefined, label: string, endOfDay: boolean): Date | undefined {
+  if (!raw?.trim()) return undefined;
+  const text = raw.trim();
+  const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(text);
+  const date = new Date(dateOnly && endOfDay ? `${text}T23:59:59.999Z` : text);
+  if (Number.isNaN(date.getTime())) throw badUserInput(`${label} must be a valid date (e.g. 2026-11-30).`);
+  return date;
+}
+
+/**
+ * Every status event and detail edit as CSV, oldest first, optionally limited
+ * to a time range. Capped at MAX_EXPORT_SHIPMENTS shipments (most recently
+ * touched first) so one request can't read the whole collection; `truncated`
+ * tells the caller when the cap was hit.
+ */
+export async function auditExport(input: { from?: string | null; to?: string | null }) {
+  const from = parseBound(input.from, "from", false);
+  const to = parseBound(input.to, "to", true);
+  if (from && to && from > to) throw badUserInput("`from` must be before `to`.");
+
+  // A shipment can only have events in range if it was touched after `from`.
+  const filter: FilterQuery<ShipmentDocument> = from ? { updatedAt: { $gte: from } } : {};
+  const shipments = await Shipment.find(filter, { trackingId: 1, history: 1, edits: 1 })
+    .sort({ updatedAt: -1, _id: -1 })
+    .limit(MAX_EXPORT_SHIPMENTS + 1)
+    .lean();
+
+  const truncated = shipments.length > MAX_EXPORT_SHIPMENTS;
+  const rows = (truncated ? shipments.slice(0, MAX_EXPORT_SHIPMENTS) : shipments)
+    .flatMap((shipment) => auditRowsFor(shipment as any))
+    .filter((row) => (!from || row.at >= from) && (!to || row.at <= to));
+
+  return { csv: buildAuditCsv(rows), rows: rows.length, truncated };
 }
 
 // ---------------------------------------------------------------------------

@@ -15,6 +15,15 @@ export type AdminProfile = {
   role: Role;
 };
 
+export type AuditExport = {
+  /** CSV text: one row per status event and per changed field, oldest first. */
+  csv: Scalars['String']['output'];
+  /** Number of data rows (not counting the header). */
+  rows: Scalars['Int']['output'];
+  /** True when the shipment cap was hit, so older activity may be missing. Narrow the date range. */
+  truncated: Scalars['Boolean']['output'];
+};
+
 export type AuthPayload = {
   email: Scalars['String']['output'];
   expiresIn: Scalars['Int']['output'];
@@ -134,6 +143,8 @@ export type PackageType =
   | 'PARCEL';
 
 export type Query = {
+  /** ADMIN only. The audit trail (status events and detail edits) as CSV, optionally within a date range (ISO date or date-time). */
+  auditExport: AuditExport;
   /** Public. Whether admin operations need a login; the app uses it to decide whether to show the login form. */
   authRequired: Scalars['Boolean']['output'];
   /** ADMIN only. Counts, a 7-day creation chart and the shipments that look stuck. */
@@ -144,6 +155,12 @@ export type Query = {
   shipment?: Maybe<Shipment>;
   /** Admin only. Newest-first, cursor-paginated list; optionally filtered by status and/or a tracking-ID prefix. */
   shipments: ShipmentPage;
+};
+
+
+export type QueryAuditExportArgs = {
+  from?: InputMaybe<Scalars['String']['input']>;
+  to?: InputMaybe<Scalars['String']['input']>;
 };
 
 

@@ -1,7 +1,9 @@
 import { useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
-import { useQuery } from "@apollo/client/react";
-import { DASHBOARD_QUERY } from "../../graphql/queries";
+import { useApolloClient, useQuery } from "@apollo/client/react";
+import { auditFileName, deliverCsv } from "../../exportAudit";
+import { feedback } from "../../feedback";
+import { AUDIT_EXPORT_QUERY, DASHBOARD_QUERY } from "../../graphql/queries";
 import { STATUS_LABELS } from "../../theme/status";
 import { useTheme, type Theme } from "../../theme/theme";
 import type { ShipmentStatus } from "../../types";
@@ -31,12 +33,37 @@ export function DashboardPanel({ onOpen }: { onOpen: (trackingId: string) => voi
   const shared = useMemo(() => makeAdminStyles(t), [t]);
   const styles = useMemo(() => makeStyles(t), [t]);
   const [refreshing, setRefreshing] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const client = useApolloClient();
 
   const { data, loading, error, refetch } = useQuery<{ dashboardStats: Stats }>(DASHBOARD_QUERY, {
     variables: { stuckAfterHours: STUCK_AFTER_HOURS },
     fetchPolicy: "cache-and-network",
   });
   const stats = data?.dashboardStats;
+
+  async function handleExport() {
+    setExporting(true);
+    try {
+      // no-cache: the file can be large and holds staff names, so it must not enter the persisted Apollo cache.
+      const result = await client.query<{ auditExport: { csv: string; rows: number; truncated: boolean } }>({
+        query: AUDIT_EXPORT_QUERY,
+        fetchPolicy: "no-cache",
+      });
+      const exported = result.data?.auditExport;
+      if (!exported) throw new Error(result.error?.message ?? "The export returned no data.");
+      await deliverCsv(auditFileName(), exported.csv);
+      feedback.success(
+        exported.truncated
+          ? `Exported ${exported.rows} rows (limit reached: older activity may be missing).`
+          : `Exported ${exported.rows} rows.`,
+      );
+    } catch (err) {
+      feedback.error((err as Error).message || "Could not export the audit log.");
+    } finally {
+      setExporting(false);
+    }
+  }
 
   async function handleRefresh() {
     setRefreshing(true);
@@ -133,6 +160,23 @@ export function DashboardPanel({ onOpen }: { onOpen: (trackingId: string) => voi
             </View>
           </Pressable>
         ))}
+      </View>
+
+      <Text style={styles.heading}>Audit trail</Text>
+      <View style={shared.card}>
+        <Text style={shared.hint}>
+          Every status change and detail edit, with who made it and when, as a CSV you can open in Excel or Sheets.
+        </Text>
+        <Pressable
+          style={({ pressed }) => [shared.secondaryButton, (exporting || pressed) && { opacity: 0.6 }]}
+          onPress={handleExport}
+          disabled={exporting}
+          accessibilityRole="button"
+          accessibilityLabel="Download audit log as CSV"
+          accessibilityState={{ disabled: exporting, busy: exporting }}
+        >
+          {exporting ? <ActivityIndicator color={t.text} /> : <Text style={shared.secondaryButtonText}>Download audit log (CSV)</Text>}
+        </Pressable>
       </View>
     </ScrollView>
   );
