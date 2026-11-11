@@ -1,4 +1,5 @@
 import "dotenv/config";
+import { isShipmentStatus, type ShipmentStatus } from "./domain/status.js";
 
 /**
  * Reads and validates process.env once at boot. Fails fast and loud —
@@ -11,6 +12,27 @@ function required(name: string): string {
     throw new Error(`Missing required environment variable: ${name}`);
   }
   return value;
+}
+
+/** Only a valid https URL counts; anything else disables alerts rather than crashing boot. */
+function parseWebhookUrl(raw: string | undefined): string | undefined {
+  if (!raw?.trim()) return undefined;
+  try {
+    const url = new URL(raw.trim());
+    return url.protocol === "https:" ? url.toString() : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+const DEFAULT_WEBHOOK_STATUSES: ShipmentStatus[] = ["DELAYED", "ON_HOLD", "DELIVERY_ATTEMPT_FAILED"];
+
+function parseWebhookStatuses(raw: string | undefined): ShipmentStatus[] {
+  if (!raw?.trim()) return DEFAULT_WEBHOOK_STATUSES;
+  return raw
+    .split(",")
+    .map((s) => s.trim().toUpperCase())
+    .filter(isShipmentStatus);
 }
 
 export const config = {
@@ -31,6 +53,13 @@ export const config = {
   rateLimitMax: Number(process.env.RATE_LIMIT_MAX ?? 300),
   /** Login attempts per IP per window. */
   loginRateLimitMax: Number(process.env.LOGIN_RATE_LIMIT_MAX ?? 10),
+  /**
+   * Optional Slack (or Discord) incoming-webhook URL. Unset = no alerts.
+   * It is a secret: anyone with it can post to the channel.
+   */
+  webhookUrl: parseWebhookUrl(process.env.WEBHOOK_URL),
+  /** Statuses that trigger an alert. Override with WEBHOOK_STATUSES=DELAYED,CANCELLED,... */
+  webhookStatuses: parseWebhookStatuses(process.env.WEBHOOK_STATUSES),
   corsOrigins: (process.env.CORS_ORIGIN ?? "")
     .split(",")
     .map((origin) => origin.trim())

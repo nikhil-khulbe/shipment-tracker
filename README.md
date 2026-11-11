@@ -36,6 +36,7 @@ _Demo GIF: TODO._
 - **Dashboard:** counts by status, shipments created per day, and the ones that need attention (delayed, on hold, failed attempt, or past their estimate).
 - **Bulk update:** select up to 50 shipments and move them to the same status in one go; each is checked individually and the result lists what failed and why.
 - **CSV import:** paste or upload a CSV (up to 200 rows). Good rows are created, bad rows are reported with their line number.
+- **Slack/Discord alerts:** when a shipment becomes `DELAYED`, `ON_HOLD` or `DELIVERY_ATTEMPT_FAILED`, a message with the tracking ID, route, location, reason and who made the change is posted to a webhook. It is fire-and-forget with a 5 s timeout, so a down webhook never fails a status update, and it never includes the receiver's name, phone or delivery code.
 - **QR labels and scanner:** print a shipping label with a QR code of the tracking link; staff can scan it with the phone camera (native only) to load the shipment.
 
 **App**
@@ -104,6 +105,8 @@ On a physical phone, `localhost` is the phone itself — set `EXPO_PUBLIC_API_UR
 | `REQUIRE_ADMIN` | default `true`. `false` = open demo mode, no login needed for admin operations |
 | `RATE_LIMIT_MAX` / `LOGIN_RATE_LIMIT_MAX` | per-IP requests per 15 min on `/graphql` (default 300) and login attempts (default 10) |
 | `CORS_ORIGIN` | comma-separated allowed browser origins (needed for the web build) |
+| `WEBHOOK_URL` | optional Slack/Discord incoming-webhook URL. A secret; unset = no alerts |
+| `WEBHOOK_STATUSES` | statuses that trigger an alert (default `DELAYED,ON_HOLD,DELIVERY_ATTEMPT_FAILED`) |
 | `LOG_LEVEL` | `fatal` / `error` / `warn` / `info` (default) / `debug` / `silent` |
 | `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` | only read by `npm run seed` |
 | `SEED_DRIVER_EMAIL` / `SEED_DRIVER_PASSWORD` | optional; `npm run seed` also creates a driver account |

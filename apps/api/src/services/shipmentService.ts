@@ -6,6 +6,7 @@ import { allowedNext, canTransition, lastRegularStatus, requiresReason, SHIPMENT
 import { parseEstimatedDelivery, type PackageType } from "../domain/shipmentDetails.js";
 import { config } from "../config.js";
 import { badUserInput, invalidStatusTransition, notFound } from "../errors.js";
+import { notifyStatusChange } from "./notifier.js";
 
 const MAX_TRACKING_ID_ATTEMPTS = 3;
 
@@ -154,6 +155,18 @@ export async function updateStatus(input: UpdateStatusInput, actor?: string | nu
       `Shipment status changed before this update could be applied. Please retry.`,
     );
   }
+
+  // Fire-and-forget: the status change is already saved, and a slow or broken
+  // webhook must never delay or fail it (notifyStatusChange never throws).
+  void notifyStatusChange({
+    trackingId: updated.trackingId,
+    status: input.status,
+    origin: updated.origin,
+    destination: updated.destination,
+    location: input.location,
+    note: input.note,
+    by: actor,
+  });
 
   return updated;
 }
