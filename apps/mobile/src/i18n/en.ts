@@ -34,6 +34,9 @@ export const en = {
   "track.mapsError": "Couldn't open maps",
 
   "saved.heading": "My shipments",
+  "saved.button": "Saved",
+  "saved.buttonLabel": "My saved shipments, {count} saved",
+  "saved.empty": "No saved shipments yet. Open a shipment and tap Save.",
   "saved.open": "Open {id}",
   "saved.openRoute": "Open {id}, {origin} to {destination}",
   "saved.remove": "Remove {id} from my shipments",

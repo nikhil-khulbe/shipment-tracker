@@ -58,6 +58,7 @@ export function TrackScreen() {
   const [input, setInput] = useState("");
   const [searchedId, setSearchedId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [savedOpen, setSavedOpen] = useState(false);
   const [updatedAt, setUpdatedAt] = useState<number | null>(null);
   // True between a user-initiated search and its result, so the "tracked"
   // haptic fires for searches and deep links but not for background polls.
@@ -122,6 +123,7 @@ export function TrackScreen() {
     (raw: string) => {
       const id = raw.trim().toUpperCase();
       if (!id) return;
+      setSavedOpen(false); // the saved panel gives way to the result
       userInitiated.current = true;
       setInput(id);
       if (id === searchedId) {
@@ -186,16 +188,32 @@ export function TrackScreen() {
           <Text style={styles.title} accessibilityRole="header">
             {tr("track.title")}
           </Text>
-          <Pressable
-            style={styles.langButton}
-            onPress={() => setLang(lang === "en" ? "hi" : "en")}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel={tr("lang.switchLabel")}
-          >
-            <Ionicons name="language-outline" size={16} color={t.text} />
-            <Text style={styles.langText}>{tr("lang.switchTo")}</Text>
-          </Pressable>
+          <View style={styles.headerActions}>
+            <Pressable
+              style={[styles.langButton, savedOpen && styles.headerButtonOn]}
+              onPress={() => setSavedOpen((open) => !open)}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityState={{ expanded: savedOpen }}
+              accessibilityLabel={tr("saved.buttonLabel", { count: String(saved.length) })}
+            >
+              <Ionicons name={savedOpen ? "bookmark" : "bookmark-outline"} size={16} color={t.text} />
+              <Text style={styles.langText}>
+                {tr("saved.button")}
+                {saved.length > 0 ? ` (${saved.length})` : ""}
+              </Text>
+            </Pressable>
+            <Pressable
+              style={styles.langButton}
+              onPress={() => setLang(lang === "en" ? "hi" : "en")}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={tr("lang.switchLabel")}
+            >
+              <Ionicons name="language-outline" size={16} color={t.text} />
+              <Text style={styles.langText}>{tr("lang.switchTo")}</Text>
+            </Pressable>
+          </View>
         </View>
         <Text style={styles.subtitle}>{tr("track.subtitle")}</Text>
 
@@ -234,7 +252,14 @@ export function TrackScreen() {
           </View>
         )}
 
-        {!hasSearched && <SavedShipments ids={saved} onOpen={search} onRemove={toggleSaved} />}
+        {savedOpen && saved.length === 0 && <Text style={styles.empty}>{tr("saved.empty")}</Text>}
+        {savedOpen && (
+          <SavedShipments
+            ids={saved}
+            onOpen={search}
+            onRemove={toggleSaved}
+          />
+        )}
 
         {isInitialLoad && !shipment && <ShipmentSkeleton />}
 
@@ -303,6 +328,8 @@ const makeStyles = (t: Theme) =>
     content: { padding: 20, paddingBottom: 120 },
     titleRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
     title: { fontSize: 24, fontWeight: "700", flexShrink: 1 },
+    headerActions: { flexDirection: "row", alignItems: "center", gap: 8, flexShrink: 0 },
+    headerButtonOn: { backgroundColor: t.border },
     langButton: {
       flexDirection: "row",
       alignItems: "center",

@@ -32,6 +32,9 @@ export const hi: Record<MessageKey, string> = {
   "track.mapsError": "नक्शा नहीं खुल सका",
 
   "saved.heading": "मेरे शिपमेंट",
+  "saved.button": "सहेजे गए",
+  "saved.buttonLabel": "मेरे सहेजे गए शिपमेंट, {count} सहेजे गए",
+  "saved.empty": "अभी कोई शिपमेंट सहेजा नहीं गया है। कोई शिपमेंट खोलें और सहेजें दबाएँ।",
   "saved.open": "{id} खोलें",
   "saved.openRoute": "{id} खोलें, {origin} से {destination}",
   "saved.remove": "{id} को मेरे शिपमेंट से हटाएँ",
