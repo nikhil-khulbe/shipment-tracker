@@ -7,6 +7,7 @@ import { shipmentProgress } from "../theme/status";
 import { commonNextStatuses } from "../components/ShipmentList";
 import { sinceLabel } from "../components/admin/DashboardPanel";
 import { auditFileName } from "../exportAudit";
+import { isNewShipment } from "../liveFeed";
 import type { StatusEvent } from "../types";
 
 const event = (status: StatusEvent["status"], note: string | null = null, timestamp = "2026-11-06T10:00:00.000Z"): StatusEvent => ({
@@ -213,5 +214,12 @@ describe("sinceLabel", () => {
 describe("auditFileName", () => {
   test("is dated so repeated exports don't overwrite each other", () => {
     expect(auditFileName(new Date("2026-11-11T08:30:00Z"))).toBe("audit-log-2026-11-11.csv");
+  });
+});
+
+describe("isNewShipment", () => {
+  test("a shipment never touched since creation is new; a changed one is not", () => {
+    expect(isNewShipment({ createdAt: "2026-11-11T10:00:00.000Z", updatedAt: "2026-11-11T10:00:00.000Z" })).toBe(true);
+    expect(isNewShipment({ createdAt: "2026-11-11T10:00:00.000Z", updatedAt: "2026-11-11T10:05:00.000Z" })).toBe(false);
   });
 });

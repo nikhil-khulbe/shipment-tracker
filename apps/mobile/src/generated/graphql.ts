@@ -259,6 +259,18 @@ export type StatusEvent = {
   updatedBy?: Maybe<Scalars['String']['output']>;
 };
 
+export type Subscription = {
+  /** Staff only. Pushes every shipment that is created or changed. */
+  shipmentFeed: Shipment;
+  /** Public. Pushes the shipment each time it changes (status, details). Same masking as the shipment query. */
+  shipmentUpdated: Shipment;
+};
+
+
+export type SubscriptionShipmentUpdatedArgs = {
+  trackingId: Scalars['String']['input'];
+};
+
 export type UpdateStatusInput = {
   /** Required when the status is DELIVERED. */
   deliveredTo?: InputMaybe<Scalars['String']['input']>;

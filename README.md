@@ -36,6 +36,7 @@ _Demo GIF: TODO._
 - **Dashboard:** counts by status, shipments created per day, and the ones that need attention (delayed, on hold, failed attempt, or past their estimate).
 - **Bulk update:** select up to 50 shipments and move them to the same status in one go; each is checked individually and the result lists what failed and why.
 - **CSV import:** paste or upload a CSV (up to 200 rows). Good rows are created, bad rows are reported with their line number.
+- **Live updates:** GraphQL subscriptions over a WebSocket on the same `/graphql` endpoint (`graphql-ws`). The Track screen updates the moment a parcel changes (`shipmentUpdated`, public, same masking as the lookup query); staff screens refresh their list and dashboard from `shipmentFeed` (staff only). Polling every 30 s stays as the fallback when the socket is down. Only subscriptions are accepted over the socket (queries and mutations stay on HTTP, behind the rate limits), with a depth limit, 10 subscriptions per connection and a per-IP connection cap. A pushed event is re-checked for each event, so a deleted account stops receiving data and an expired token drops to anonymous masking.
 - **Audit export:** admins can download the whole audit trail (every status event and detail edit, with who and when, oldest first) as a CSV from the dashboard. Built on the server so quoting is right, and cells starting with `=`, `+`, `-` or `@` are defused against spreadsheet formula injection. Capped at 5000 shipments per export.
 - **Slack/Discord alerts:** when a shipment becomes `DELAYED`, `ON_HOLD` or `DELIVERY_ATTEMPT_FAILED`, a message with the tracking ID, route, location, reason and who made the change is posted to a webhook. It is fire-and-forget with a 5 s timeout, so a down webhook never fails a status update, and it never includes the receiver's name, phone or delivery code.
 - **QR labels and scanner:** print a shipping label with a QR code of the tracking link; staff can scan it with the phone camera (native only) to load the shipment.
@@ -108,6 +109,7 @@ On a physical phone, `localhost` is the phone itself — set `EXPO_PUBLIC_API_UR
 | `CORS_ORIGIN` | comma-separated allowed browser origins (needed for the web build) |
 | `WEBHOOK_URL` | optional Slack/Discord incoming-webhook URL. A secret; unset = no alerts |
 | `WEBHOOK_STATUSES` | statuses that trigger an alert (default `DELAYED,ON_HOLD,DELIVERY_ATTEMPT_FAILED`) |
+| `WS_MAX_CONNECTIONS_PER_IP` | concurrent WebSocket connections per client IP (default 20) |
 | `LOG_LEVEL` | `fatal` / `error` / `warn` / `info` (default) / `debug` / `silent` |
 | `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` | only read by `npm run seed` |
 | `SEED_DRIVER_EMAIL` / `SEED_DRIVER_PASSWORD` | optional; `npm run seed` also creates a driver account |
@@ -122,11 +124,11 @@ On a physical phone, `localhost` is the phone itself — set `EXPO_PUBLIC_API_UR
 ## Tests
 
 ```bash
-npm test -w api      # 56 tests
-npm test -w mobile   # 48 tests
+npm test -w api      # 66 tests
+npm test -w mobile   # 49 tests
 ```
 
-**API (56)** run through `ApolloServer.executeOperation` against an in-memory MongoDB, so schema, context and error formatting are all exercised. They cover:
+**API (66)** run through `ApolloServer.executeOperation` against an in-memory MongoDB, so schema, context and error formatting are all exercised. They cover:
 
 - Public lookup (full history, `null` for an unknown ID) and the `createShipment` initial state.
 - Status updates: legal moves append to history; an illegal move is rejected **and leaves the document unchanged**; `canTransition` is checked over the whole matrix, including the exception rules (reason required, resume targets, terminal states).
@@ -137,7 +139,7 @@ npm test -w mobile   # 48 tests
 - Proof of delivery (recipient name, right code, wrong attempt changes nothing), the audit trail, `editShipment` (partial changes, clearing fields, no-op edits not logged), `dashboardStats`, `bulkUpdateStatus` (50 max, duplicates ignored, per-row results), `importShipments` (per-row errors, 200 max).
 - The query depth limit. (The per-IP rate limits sit in Express, outside Apollo, so they are not in the automated suite; I checked them by hand against a running server, where the 11th login attempt returned 429.)
 
-**App (48)** run with jest-expo and Testing Library: ETA wording, progress, CSV parsing (quotes, BOM, bad rows by line number), QR generation, scan-text parsing, the saved list, bulk-selection logic, the main components, and the i18n catalogs (same keys and `{placeholders}` in both languages, switching language re-renders, the choice is remembered).
+**App (49)** run with jest-expo and Testing Library: ETA wording, progress, CSV parsing (quotes, BOM, bad rows by line number), QR generation, scan-text parsing, the saved list, bulk-selection logic, the main components, and the i18n catalogs (same keys and `{placeholders}` in both languages, switching language re-renders, the choice is remembered).
 
 The first API run downloads a MongoDB binary, so it can be slow on a cold machine. CI runs both suites, both typechecks, and fails if the generated GraphQL types are out of date.
 
@@ -155,7 +157,7 @@ The first API run downloads a MongoDB binary, so it can be slow on a cold machin
 - **Production hardening:** introspection off, internal errors masked (real error logged server-side), 100kb body limit, `/healthz`.
 - **Token storage:** `expo-secure-store` (Keychain/Keystore) on native. SecureStore has no web implementation, so the web build falls back to `localStorage`, which is XSS-exposed.
 - **Cursor pagination, not skip/limit.** The cursor is an opaque `(createdAt, _id)` pair; `skip` is O(n) and shifts rows when new shipments arrive mid-scroll. The query fetches `limit + 1` rows to learn whether another page exists, and the `_id` tie-break keeps the order stable when two rows share a timestamp (covered by a test). Search is an *anchored* prefix match so it can use the `trackingId` index.
-- **Polling, not subscriptions, for live status.** Status changes are minutes apart and polling needs no WebSocket infrastructure on a free API tier.
+- **Subscriptions push, polling backs them up.** Events go through an in-process bus (`pubsub.ts`), so the API runs as one instance; a Redis-backed engine behind the same interface is the way to scale out. The socket reconnects forever with backoff (the free API tier sleeps), and the 30 s poll covers any gap. Event payloads are serialised once and masked per subscriber by the field resolvers, so one publish serves a public viewer and an admin safely.
 - **Optimistic UI.** `updateStatus` writes a predicted result into Apollo's optimistic cache layer; if the server rejects it, that layer is discarded and the UI snaps back with no hand-written undo.
 - **Cache persistence excludes admin data.** The on-device cache is a custom ~60-line save/restore (the off-the-shelf `apollo3-cache-persist` targets Apollo 3 and can't filter). Before saving, the admin list and profile are evicted and the cache garbage-collected, so only what the public Track screen showed is written to disk. It's also wiped on logout.
 - **One theme object.** Light and dark palettes share the same keys; components call `useTheme()` and never contain a hex literal.
@@ -168,7 +170,7 @@ The first API run downloads a MongoDB binary, so it can be slow on a cold machin
 
 ## Known limitations / what I'd do next
 
-- **Left out on purpose:** push notifications (needs Firebase/APNs credentials and a device-token store), GraphQL subscriptions (polling every 30 s is enough at this scale and works on a free API tier), Sentry (needs an account and DSN), photo proof of delivery (needs file storage; a name plus delivery code stands in), an in-app map (the Route button opens Google Maps instead).
+- **Left out on purpose:** push notifications (needs Firebase/APNs credentials and a device-token store), Sentry (needs an account and DSN), photo proof of delivery (needs file storage; a name plus delivery code stands in), an in-app map (the Route button opens Google Maps instead).
 - Staff screens are English only; only what customers see is translated.
 - The QR scanner needs a real camera, and printing a label opens the browser's print dialog on web. Neither is covered by automated tests; the scanner's text parsing is.
 - Atlas free tier with a `0.0.0.0/0` allowlist (Render's free tier has no static IP): the real fix is private networking on a paid tier.

@@ -12,10 +12,10 @@ import {
   View,
 } from "react-native";
 import { NetworkStatus } from "@apollo/client";
-import { useQuery } from "@apollo/client/react";
+import { useQuery, useSubscription } from "@apollo/client/react";
 import { useNavigation, useRoute, type RouteProp } from "@react-navigation/native";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { SHIPMENT_QUERY } from "../graphql/queries";
+import { SHIPMENT_QUERY, SHIPMENT_UPDATED_SUBSCRIPTION } from "../graphql/queries";
 import { ShipmentHeaderCard } from "../components/ShipmentHeaderCard";
 import { ShipmentSkeleton } from "../components/Skeleton";
 import { Timeline } from "../components/Timeline";
@@ -74,10 +74,18 @@ export function TrackScreen() {
     // disk) immediately, then refresh from the network. Offline, the network
     // half fails but the cached shipment stays on screen.
     fetchPolicy: "cache-and-network",
-    // Polling, not subscriptions: updates are minutes apart and polling needs
-    // no WebSocket infrastructure on a free API tier.
+    // Live updates arrive over the WebSocket below; polling stays as the
+    // fallback for when the socket is down (offline, or the free API tier waking up).
     pollInterval: POLL_INTERVAL_MS,
     notifyOnNetworkStatusChange: true,
+  });
+
+  // A pushed change is written into the Apollo cache by id, so the query above re-renders by itself.
+  useSubscription(SHIPMENT_UPDATED_SUBSCRIPTION, {
+    variables: { trackingId: searchedId ?? "" },
+    skip: searchedId === null,
+    onData: () => setUpdatedAt(Date.now()),
+    onError: () => {}, // socket trouble is not user-facing; polling covers it
   });
 
   const shipment = data?.shipment ?? null;

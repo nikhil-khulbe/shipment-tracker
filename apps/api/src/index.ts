@@ -1,3 +1,4 @@
+import { createServer } from "node:http";
 import express from "express";
 import cors from "cors";
 import mongoose from "mongoose";
@@ -7,8 +8,8 @@ import { ApolloServerPluginLandingPageDisabled } from "@apollo/server/plugin/dis
 import { expressMiddleware } from "@as-integrations/express5";
 
 import { config } from "./config.js";
-import { typeDefs } from "./schema.js";
-import { resolvers } from "./resolvers/index.js";
+import { schema } from "./executableSchema.js";
+import { attachRealtime } from "./realtime.js";
 import { buildContext, type GraphQLContext } from "./context.js";
 import { Shipment } from "./models/Shipment.js";
 import { Admin } from "./models/Admin.js";
@@ -27,8 +28,7 @@ async function main() {
   }
 
   const server = new ApolloServer<GraphQLContext>({
-    typeDefs,
-    resolvers,
+    schema,
     validationRules: [depthLimit(8)],
     introspection: !config.isProduction,
     plugins: config.isProduction ? [ApolloServerPluginLandingPageDisabled()] : [],
@@ -74,8 +74,17 @@ async function main() {
   app.use("/graphql", apiLimiter, loginLimiter);
   app.use("/graphql", expressMiddleware(server, { context: buildContext }));
 
-  app.listen(config.port, () => {
+  // Same port: HTTP for queries and mutations, a WebSocket upgrade on /graphql for subscriptions.
+  const httpServer = createServer(app);
+  const realtime = attachRealtime(httpServer, schema);
+
+  httpServer.listen(config.port, () => {
     logger.info({ port: config.port, requireAdmin: config.requireAdmin }, "API ready");
+  });
+
+  // Render sends SIGTERM on deploys: close sockets cleanly so clients reconnect to the new instance.
+  process.once("SIGTERM", () => {
+    void realtime.close().finally(() => httpServer.close(() => process.exit(0)));
   });
 }
 

@@ -211,4 +211,12 @@ export const typeDefs = /* GraphQL */ `
     "ADMIN only. Create up to 200 shipments at once (e.g. from a CSV)."
     importShipments(inputs: [CreateShipmentInput!]!): [ImportResult!]!
   }
+
+  type Subscription {
+    "Public. Pushes the shipment each time it changes (status, details). Same masking as the shipment query."
+    shipmentUpdated(trackingId: String!): Shipment!
+
+    "Staff only. Pushes every shipment that is created or changed."
+    shipmentFeed: Shipment!
+  }
 `;

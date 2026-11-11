@@ -60,6 +60,8 @@ export const config = {
   webhookUrl: parseWebhookUrl(process.env.WEBHOOK_URL),
   /** Statuses that trigger an alert. Override with WEBHOOK_STATUSES=DELAYED,CANCELLED,... */
   webhookStatuses: parseWebhookStatuses(process.env.WEBHOOK_STATUSES),
+  /** Concurrent WebSocket connections allowed per client IP. */
+  wsMaxConnectionsPerIp: Number(process.env.WS_MAX_CONNECTIONS_PER_IP ?? 20),
   corsOrigins: (process.env.CORS_ORIGIN ?? "")
     .split(",")
     .map((origin) => origin.trim())

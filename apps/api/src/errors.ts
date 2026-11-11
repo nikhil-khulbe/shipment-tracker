@@ -69,6 +69,15 @@ export function currentRole(context: { admin: AdminContext | null }): Promise<Ro
 }
 
 /**
+ * Forget the memoised role. A normal request lives for milliseconds, but a
+ * WebSocket subscription's context lives for hours, so it calls this before
+ * handling each event to notice a deleted or demoted account.
+ */
+export function invalidateRole(context: object): void {
+  roleCache.delete(context);
+}
+
+/**
  * Throws UNAUTHENTICATED if no admin is attached to the request context,
  * FORBIDDEN if that account has since been deleted or its role isn't one of
  * `roles`. Every admin-only resolver's first line goes through this.

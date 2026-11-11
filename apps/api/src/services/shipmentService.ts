@@ -8,6 +8,7 @@ import { config } from "../config.js";
 import { badUserInput, invalidStatusTransition, notFound } from "../errors.js";
 import { notifyStatusChange } from "./notifier.js";
 import { auditRowsFor, buildAuditCsv } from "../domain/auditExport.js";
+import { publishShipment } from "../pubsub.js";
 
 const MAX_TRACKING_ID_ATTEMPTS = 3;
 
@@ -54,7 +55,7 @@ export async function createShipment(input: CreateShipmentInput, actor?: string 
   for (let attempt = 1; attempt <= MAX_TRACKING_ID_ATTEMPTS; attempt++) {
     const trackingId = generateTrackingId();
     try {
-      return await Shipment.create({
+      const created = await Shipment.create({
         trackingId,
         origin: input.origin,
         destination: input.destination,
@@ -78,6 +79,8 @@ export async function createShipment(input: CreateShipmentInput, actor?: string 
           },
         ],
       });
+      publishShipment(created);
+      return created;
     } catch (err) {
       const isDuplicateKey = (err as { code?: number }).code === 11000;
       const isLastAttempt = attempt === MAX_TRACKING_ID_ATTEMPTS;
@@ -156,6 +159,8 @@ export async function updateStatus(input: UpdateStatusInput, actor?: string | nu
       `Shipment status changed before this update could be applied. Please retry.`,
     );
   }
+
+  publishShipment(updated);
 
   // Fire-and-forget: the status change is already saved, and a slow or broken
   // webhook must never delay or fail it (notifyStatusChange never throws).
@@ -349,6 +354,7 @@ export async function editShipment(trackingIdRaw: string, input: EditShipmentInp
     if (!updated) {
       throw invalidStatusTransition("The shipment changed while you were editing it. Please reload and try again.");
     }
+    publishShipment(updated);
     return updated;
   } catch (err) {
     if ((err as { name?: string }).name === "ValidationError") throw badUserInput((err as Error).message);

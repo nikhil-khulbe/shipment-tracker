@@ -14,7 +14,8 @@ import { AUTH_REQUIRED_QUERY, ME_QUERY, SHIPMENT_QUERY } from "../graphql/querie
 import { CREATE_SHIPMENT_MUTATION, LOGIN_MUTATION, UPDATE_STATUS_MUTATION } from "../graphql/mutations";
 import { getToken, saveToken, clearToken } from "../auth/token";
 import { onSessionExpired } from "../auth/session";
-import { apolloClient } from "../apollo";
+import { apolloClient, resetRealtime } from "../apollo";
+import { useLiveShipmentFeed } from "../liveFeed";
 import { clearPersistedCache } from "../cachePersist";
 import { ShipmentList } from "../components/ShipmentList";
 import { Text, TextInput } from "../components/ui";
@@ -98,6 +99,7 @@ export function AdminScreen() {
 
   async function handleLogout() {
     await clearToken();
+    resetRealtime();
     await apolloClient.resetStore();
     await clearPersistedCache();
     setHasStoredToken(false);
@@ -136,6 +138,7 @@ export function AdminScreen() {
 function AdminDashboard({ email, role, onLogout }: { email?: string; role: Role; onLogout?: () => void }) {
   const t = useTheme();
   const styles = useMemo(() => makeStyles(t), [t]);
+  useLiveShipmentFeed();
   const [section, setSection] = useState<Section>("list");
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
@@ -211,6 +214,7 @@ function LoginForm({ onLoggedIn }: { onLoggedIn: () => void }) {
     const token = result?.data?.login?.token;
     if (token) {
       await saveToken(token);
+      resetRealtime();
       onLoggedIn();
     }
   }

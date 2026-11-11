@@ -9,6 +9,8 @@ const BCRYPT_COST = 10;
 export type JwtPayload = {
   sub: string;
   email: string;
+  /** Added by jsonwebtoken when signing: expiry in seconds since epoch. */
+  exp?: number;
 };
 
 export type AuthResult = {

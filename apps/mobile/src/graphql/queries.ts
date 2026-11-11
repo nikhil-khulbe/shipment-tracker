@@ -114,3 +114,34 @@ export const SHIPMENTS_QUERY = gql`
     }
   }
 `;
+
+/** Pushes every change to one shipment. Same fields as the lookup, so Apollo updates its cache by id. */
+export const SHIPMENT_UPDATED_SUBSCRIPTION = gql`
+  ${SHIPMENT_FIELDS}
+  subscription ShipmentUpdated($trackingId: String!) {
+    shipmentUpdated(trackingId: $trackingId) {
+      ...ShipmentFields
+    }
+  }
+`;
+
+/**
+ * Staff: every create or change. createdAt/updatedAt tell a brand-new shipment (equal) from a change.
+ * Deliberately no `history` here: its entries have no id, so a partial selection would overwrite
+ * the full history already in the cache.
+ */
+export const SHIPMENT_FEED_SUBSCRIPTION = gql`
+  subscription ShipmentFeed {
+    shipmentFeed {
+      id
+      trackingId
+      origin
+      destination
+      receiverName
+      currentStatus
+      allowedNextStatuses
+      createdAt
+      updatedAt
+    }
+  }
+`;
